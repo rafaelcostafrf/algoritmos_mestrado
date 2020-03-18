@@ -12,8 +12,8 @@ def pos(t,x,u):
     m = 10
     return np.array([x[1], (u/m)])
 
-ti, tf = 0, 5
-passos = 100
+ti, tf = 0, 0.1
+passos = 10
 t = np.linspace(ti,tf,passos)
 t_in = t[0:len(t)-1]
 t_fi = t[1:]
@@ -29,7 +29,7 @@ Q = 0.75
 
 # N tamanho da batelada; D_in dimensao da entrada;
 # H e o tamanho dos neurons escondidos; D_out dimensao de saida.
-N, D_in, H, D_out = 250, 7, 300, 2
+N, D_in, H, D_out = 500, 7, 400, 2
 x_nn = torch.randn(N, D_in)
 y_nn = torch.randn(N, D_out)
 
@@ -42,11 +42,15 @@ model = torch.nn.Sequential(
     torch.nn.Linear(H,D_out),
 )
 
+if (input("deseja carregar um modelo salvo? s ou n: ") == ("s")):
+    model.load_state_dict(torch.load(("modelos/"+input("Digite o nome do arquivo: ")+".plk")))
+    model.eval()
+                          
 y_inicial = np.random.rand(N,2)*10
 entradas = np.random.rand(N,passos)
 
 loss_fn = torch.nn.MSELoss(reduction='sum')
-learning_rate = 1e-6
+learning_rate = 1e-7
 optmizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
 
@@ -86,7 +90,7 @@ for x,y in zip(x_saida,y_saida):
 
 ## TREINAMENTO DA REDE PARA CADA DADO GERADO
 for k,x_nn, y_nn in zip(range(T),x_saida[0:T],y_saida[0:T]):
-    for t in range(1000):
+    for t in range(200):
         y_pred = model(x_nn/divisor)
         loss = loss_fn(y_pred,y_nn/divisor)
         optmizer.zero_grad()
@@ -101,11 +105,7 @@ for k,x_nn, y_nn in zip(range(R),x_saida[T+1:N],y_saida[T+1:N]):
         y_pred = model(x_nn/divisor)
         loss += loss_fn(y_pred,y_nn/divisor)/R
 print("%i TESTES -- perca: %.10f" %(T,float(loss)))
-if (input("salvar resultado? digite s ou n: ")==("s")):
-    str_in = input("Digite o nome do arquivo: ")
-    str_final = ("modelos/"+str_in+".plk")
-    torch.save(model.state_dict(), str_final)
-    print(("Arquivo salvo em: " + str_final))
+
 
 
 ##PLOT DE UM TESTE PRA VISUALIZACAO
@@ -118,8 +118,15 @@ plt.figure()
 plt.title('posicao')
 plt.plot(range(passos-3),a[:,0]*float(divisor))
 plt.plot(range(passos-3),b[:,0])
+plt.pause(0.05)
 plt.figure()
 plt.title('velocidade')
 plt.plot(range(passos-3),a[:,1]*float(divisor))
 plt.plot(range(passos-3),b[:,1])
-       
+plt.pause(0.05)
+
+if (input("salvar resultado? digite s ou n: ")==("s")):
+    str_in = input("Digite o nome do arquivo: ")
+    str_final = ("modelos/"+str_in+".plk")
+    torch.save(model.state_dict(), str_final)
+    print(("Arquivo salvo em: " + str_final))
