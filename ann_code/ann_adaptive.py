@@ -4,20 +4,19 @@ import matplotlib.pyplot as plt
 import torch
 
 ## FUNCAO DINAMICA DO SISTEMA
-def pos(t,x,u):
-    m = 10
+def pos(t,x,u,m):
     return np.array([x[1], (u/m)])
 
 ## DEFINICAO DO INTEGRADOR NUMERICO
 # ti - tempo inicial, tf - tempo final, 
 # passos - passos de integracao, N número de simulacões a serem realizadas em uma batelada de treino
-ti, tf = 0, 2
-N, passos = 300, 50
+ti, tf = 0, 10
+N, passos = 100, 1000
 
 ## DEFINICAO DA REDE NEURAL
 # D_in dimensao da entrada;
 # H e o tamanho dos neurons escondidos; D_out dimensao de saida.
-D_in, H, D_out = 7, 100, 2
+D_in, H, D_out = 2, 200, 1
 
 model = torch.nn.Sequential(
     torch.nn.Linear(D_in,H),
@@ -26,7 +25,7 @@ model = torch.nn.Sequential(
 )
 
 loss_fn = torch.nn.MSELoss(reduction='sum')
-learning_rate = 1e-4
+learning_rate = 1e-3
 optmizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
 ## DIVISAO DA DATABASE ENTRE TREINAMENTO E TESTES
@@ -43,6 +42,9 @@ if (input("deseja carregar um modelo salvo? s ou n: ") == ("s")):
 ## VALORES INICIAIS E ENTRADAS ALEATORIAS (PARA O TREINAMENTO DA REDE)                          
 y_inicial = np.random.rand(N,2)*2-np.ones([N,2])
 entradas = np.random.rand(N,passos)*2-np.ones([N,passos])
+m = [np.linspace(np.random.rand()*2+9,np.random.rand()*2+9,passos)]
+for i in range(N-1):
+    m=np.append(m,[np.linspace(np.random.rand()*2+9,np.random.rand()*2+9,passos)],axis=0)
 
 ## CALCULO DA DINAMICA E SEPARACAO DAS LISTAS DE DADOS
 t = np.linspace(ti,tf,passos)
@@ -52,23 +54,29 @@ t_fi = t[1:]
 y = np.zeros((len(t), 2))
 u = np.zeros((len(t), 1))
 
-for y_0,u in zip(y_inicial,entradas):
+for y_0,u,massa in zip(y_inicial,entradas,m):
     y[0,:] = y_0 
-    
     for i,t_i,t_f in zip(range(0,passos),t_in,t_fi):
-        r = integrate.solve_ivp(pos, (t_i, t_f), y[i], args=[u[i]])
+        r = integrate.solve_ivp(pos, (t_i, t_f), y[i], args=[u[i],massa[i]])
+        r_sim = integrate.solve_ivp(pos, (t_i, t_f), y[i], args=[u[i],10])
         y[i+1]=r.y[:,-1]  
+    # atrasos na saída
     atrasos = 3
     atraso_3 = y[0:len(y)-atrasos,:]
     atraso_2 = y[1:len(y)-atrasos+1,:]
     atraso_1 = y[2:len(y)-atrasos+2,:]
     atraso_0 = y[3:len(y)-atrasos+3,:]
+    
+    # organizacao das massas
+    massa_1 = massa[2:len(y)-1]
+    massa_0 = massa[3:len(y)]
+    
     x_nn = np.zeros([len(atraso_0),D_in])
     y_nn = np.zeros([len(atraso_0),D_out])
     # Ordenacao da dinamica discreta para entrada na rede neural
-    for i,pos_0,pos_1,pos_2,pos_3,entrada in zip(range(len(atraso_0)),atraso_0,atraso_1,atraso_2,atraso_3,u[3:len(y)]):
-        x_nn[i,:]=[pos_1[0],pos_1[1],pos_2[0],pos_2[1],pos_3[0],pos_3[1],entrada]
-        y_nn[i,:]=[pos_0[0],pos_0[1]]
+    for i,pos_0,pos_1,pos_2,pos_3,entrada,massa_a1,massa_a0 in zip(range(len(atraso_0)),atraso_0,atraso_1,atraso_2,atraso_3,u[3:len(y)],massa_1,massa_0):
+        x_nn[i,:]=[r.y[1,1]-r_sim.y[1,1],massa_a1]
+        y_nn[i,:]=[massa_a0]
     
     if 'x_saida' in locals():
         x_saida=np.append(x_saida,x_nn, axis=0)
@@ -125,15 +133,11 @@ b = y_saida.numpy()
 
 plt.close('all')
 plt.figure()
-plt.title('posicao')
+plt.title('massa')
 plt.plot(range(len(a)),a[:,0]*float(divisor))
 plt.plot(range(len(a)),b[:,0])
 plt.pause(1)
-plt.figure()
-plt.title('velocidade')
-plt.plot(range(len(a)),a[:,1]*float(divisor))
-plt.plot(range(len(a)),b[:,1])
-plt.pause(1)
+
 
 ## SALVA OS PESOS OBTIDOS NO PROCESSO 
 if (input("salvar resultado? digite s ou n: ")==("s")):
