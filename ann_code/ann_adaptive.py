@@ -3,7 +3,7 @@ from scipy import integrate
 import matplotlib.pyplot as plt
 import torch
 
-## DEFINICAO DA DINAMICA
+## FUNCAO DINAMICA DO SISTEMA
 def pos(t,x,u):
     m = 10
     return np.array([x[1], (u/m)])
@@ -29,7 +29,8 @@ loss_fn = torch.nn.MSELoss(reduction='sum')
 learning_rate = 1e-4
 optmizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
-#Q e a divisao entre database de treinamento e teste
+## DIVISAO DA DATABASE ENTRE TREINAMENTO E TESTES
+# Q o quociente entre treinamento e testes
 Q = 0.75
 T = int(passos*N*Q)
 R = N*passos-T
@@ -44,7 +45,6 @@ y_inicial = np.random.rand(N,2)*2-np.ones([N,2])
 entradas = np.random.rand(N,passos)*2-np.ones([N,passos])
 
 ## CALCULO DA DINAMICA E SEPARACAO DAS LISTAS DE DADOS
-
 t = np.linspace(ti,tf,passos)
 t_in = t[0:len(t)-1]
 t_fi = t[1:]
@@ -65,7 +65,7 @@ for y_0,u in zip(y_inicial,entradas):
     atraso_0 = y[3:len(y)-atrasos+3,:]
     x_nn = np.zeros([len(atraso_0),D_in])
     y_nn = np.zeros([len(atraso_0),D_out])
-    
+    # Ordenacao da dinamica discreta para entrada na rede neural
     for i,pos_0,pos_1,pos_2,pos_3,entrada in zip(range(len(atraso_0)),atraso_0,atraso_1,atraso_2,atraso_3,u[3:len(y)]):
         x_nn[i,:]=[pos_1[0],pos_1[1],pos_2[0],pos_2[1],pos_3[0],pos_3[1],entrada]
         y_nn[i,:]=[pos_0[0],pos_0[1]]
@@ -77,6 +77,7 @@ for y_0,u in zip(y_inicial,entradas):
         x_saida = x_nn
         y_saida = y_nn
         
+## TRANSFORMACAO DA LISTA DE DINAMICA DISCRETA EM TENSOR (MAIOR VELOCIDADE DE TREINAMENTO)        
 x_saida = torch.Tensor(x_saida)
 y_saida = torch.Tensor(y_saida)
 
@@ -114,12 +115,13 @@ x_test = x_saida[T+1:-1]
 y_test = y_saida[T+1:-1]
 loss = 0
 y_pred = model(x_test/divisor)
-loss += loss_fn(y_pred,y_test/divisor)/R
-print("%i TESTES -- perca: %.10f" %(T,float(loss)))
+loss += loss_fn(y_pred,y_test/divisor)
+print("%i TESTES -- perca: %.10f" %(R/passos,float(loss)))
 
-##PLOT DE UM TESTE PRA VISUALIZACAO
+## PLOT DE UM TESTE PRA VISUALIZACAO
+y_pred = model(x_saida/divisor)
 a = y_pred.detach().numpy()
-b = y_test.numpy()
+b = y_saida.numpy()
 
 plt.close('all')
 plt.figure()
