@@ -6,3 +6,5 @@ Nos próximos commits irei adicionar os outros estados do sistema (pitch yaw e r
 
 
 Agradecimentos a Anuradha Weeraman em seu reddit: https://github.com/aweeraman/reinforcement-learning-continuous-control onde seu algoritmo de Atuação e Supervisão foi adaptado para utilização neste trabalho.
+
+Uma das adaptações inseridas foi a utilização de ruído gaussiano, mais simples, e decaimento exponencial da chance de ocorrer uma ação aleatória, melhorando muito na convergencia deste problema.
