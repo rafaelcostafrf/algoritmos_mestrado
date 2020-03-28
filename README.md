@@ -1,5 +1,5 @@
-# Versão 0.0.2
+# VersÃ£o 0.0.3
 ## Autor: Rafael Costa Fernandes
-## Versão em atualização constante
-A versão final busca uma rede neural adaptativa para um sistema não linear. Também busca um algoritmo de detecção e posicionamento via QR code ou similares. 
-A integração entre os dois será realizada nas próximas versões.
+## VersÃ£o em atualizaÃ§Ã£o constante
+A versÃ£o final busca uma rede neural *DDPG* para um sistema nÃ£o linear. TambÃ©m busca um algoritmo de detecÃ§Ã£o e posicionamento via QR code ou similares. 
+A integraÃ§Ã£o entre os dois serÃ¡ realizada nas prÃ³ximas versÃµes.
