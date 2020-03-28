@@ -1,0 +1,1 @@
+Agradecimentos a Anuradha Weeraman em seu reddit: https://github.com/aweeraman/reinforcement-learning-continuous-control onde seu algoritmo de Atuação e Supervisão foi adaptado para utilização neste trabalho.
