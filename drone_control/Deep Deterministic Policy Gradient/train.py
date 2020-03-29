@@ -4,26 +4,30 @@ from ddpg_agent import Agent
 from collections import deque
 from drone_modelo import DinamicaDrone
 
-#imprime informaçoes
-n_imp = 30
-
+#Dinamica do sistema (passo de tempo e número máximo de iterações)
+passo_t = 0.01 
+n_max = 350
 #inicializa o ambiente
-env = DinamicaDrone()
+env = DinamicaDrone(passo_t,n_max)
 
-# size of each action
-action_size = 1
+#imprime informaçoes a cada n rodadas
+n_imp = 5
 
-# examine the state space
-state_size = 4
+# quantidade de açoes
+action_size = 4
+
+# quantidade de estados
+state_size = 16
 
 agent = Agent(state_size=state_size, action_size=action_size, random_seed=1)
 scores_deque = deque(maxlen=n_imp)
 passos_deque = deque(maxlen=n_imp)
 rodada = 0
 plt.close('all')
+
 while True:
     rodada += 1    
-    env.passo(10)
+    env.passo(np.array([[0,0,0,0]]))
     states = env.y
     scores = 0    
     
@@ -41,7 +45,7 @@ while True:
             passos_deque.append(env.i)
             break
     if rodada % n_imp == 0: 
-        env.impr_graf([0],agent)
+        env.impr_graf([0,2,4,6],[0,1,2,3],agent,rodada)
         plt.figure('Evolução - Score')
         plt.scatter(rodada,np.mean(scores_deque),color = 'blue', marker = 'x', s = 3)
         plt.pause(0.01)

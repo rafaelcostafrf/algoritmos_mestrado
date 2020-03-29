@@ -8,8 +8,8 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 
-BUFFER_SIZE = int(1e6)  # replay buffer size
-BATCH_SIZE = 200        # minibatch size
+BUFFER_SIZE = int(1e9)  # replay buffer size
+BATCH_SIZE = 256         # minibatch size
 GAMMA = 0.99            # discount factor
 TAU = 1e-3              # for soft update of target parameters
 LR_ACTOR = 1e-4         # learning rate of the actor 
@@ -29,9 +29,9 @@ class Agent():
             action_size (int): dimension of each action
             random_seed (int): random seed
         """
-        self.EXPLORATION_IN = 1
+        self.EXPLORATION_IN = 0.5
         self.EXPLORATION_RATE = 1
-        self.EXPLORATION_DECAY = 0.002
+        self.EXPLORATION_DECAY = 0.001
         self.state_size = state_size
         self.action_size = action_size
         self.seed = random.seed(random_seed)
@@ -66,9 +66,11 @@ class Agent():
         with torch.no_grad():
             action = self.actor_local(state).cpu().data.numpy()
         self.actor_local.train()
-        if add_noise and np.random.rand() < self.EXPLORATION_RATE:           
-            self.EXPLORATION_RATE = self.EXPLORATION_IN*np.exp(-self.EXPLORATION_DECAY*i)
-            action += np.random.normal(0,0.5)            
+        self.EXPLORATION_RATE = self.EXPLORATION_IN*np.exp(-self.EXPLORATION_DECAY*i)
+        if add_noise:
+            for j in range(self.action_size):
+                if np.random.rand() < self.EXPLORATION_RATE:
+                    action[0,j] += np.random.normal(0,0.5)                        
         return np.clip(action, -1, 1)
 
     def reset(self):
