@@ -3,19 +3,20 @@ import random
 from collections import namedtuple, deque
 
 from model import Actor, Critic
-
+from drone_modelo import DinamicaDrone
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
 
-BUFFER_SIZE = int(1e9)  # replay buffer size
-BATCH_SIZE = 256         # minibatch size
-GAMMA = 0.99            # discount factor
-TAU = 1e-3              # for soft update of target parameters
-LR_ACTOR = 1e-4         # learning rate of the actor 
-LR_CRITIC = 1e-4        # learning rate of the critic
-WEIGHT_DECAY = 0.0      # L2 weight decay
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+BUFFER_SIZE = int(1e6)  # replay buffer size
+BATCH_SIZE = 124      # minibatch size
+GAMMA = 0.95           # discount factor
+TAU = 0.01            # for soft update of target parameters
+LR_ACTOR = 0.001        # learning rate of the actor 
+LR_CRITIC = 0.001        # learning rate of the critic
+WEIGHT_DECAY = 0.0     # L2 weight decay
+device = torch.device("cuda:0")
+target_step_update = 5
 
 class Agent():
     """Interacts with and learns from the environment."""
@@ -34,30 +35,43 @@ class Agent():
         self.EXPLORATION_DECAY = 0.001
         self.state_size = state_size
         self.action_size = action_size
-        self.seed = random.seed(random_seed)
+        # self.seed = random.seed(random_seed)
+        
 
+            
+                   
         # Actor Network (w/ Target Network)
         self.actor_local = Actor(state_size, action_size, random_seed).to(device)
         self.actor_target = Actor(state_size, action_size, random_seed).to(device)
         self.actor_optimizer = optim.Adam(self.actor_local.parameters(), lr=LR_ACTOR)
-
         # Critic Network (w/ Target Network)
         self.critic_local = Critic(state_size, action_size, random_seed).to(device)
         self.critic_target = Critic(state_size, action_size, random_seed).to(device)
         self.critic_optimizer = optim.Adam(self.critic_local.parameters(), lr=LR_CRITIC, weight_decay=WEIGHT_DECAY)
-
         # Replay memory
         self.memory = ReplayBuffer(action_size, BUFFER_SIZE, BATCH_SIZE, random_seed)
+        
+        try:
+               self.actor_local.load_state_dict(torch.load('modelos/actor_local.pt'))
+               self.actor_target.load_state_dict(torch.load('modelos/actor_target.pt'))
+               self.critic_local.load_state_dict(torch.load('modelos/critic_local.pt'))
+               self.critic_target.load_state_dict(torch.load('modelos/critic_target.pt'))
+               print('Os modelos foram carregados')
+        except:
+               print('Nao foi possivel carregar os modelos salvos') 
+
+
     
-    def step(self, state, action, reward, next_state, done):
+    def step(self, state, action, reward, next_state, done, i):
         """Save experience in replay memory, and use random sample from buffer to learn."""
         # Save experience / reward
         self.memory.add(state, action, reward, next_state, done)
+        self.i = i
 
         # Learn, if enough samples are available in memory
-        if len(self.memory) > BATCH_SIZE:
-            experiences = self.memory.sample()
-            self.learn(experiences, GAMMA)
+        if len(self.memory) > 10*BATCH_SIZE:
+              experiences = self.memory.sample()
+              self.learn(experiences, GAMMA)
 
     def act(self, state, add_noise, i):
         """Returns actions for given state as per current policy."""
@@ -70,7 +84,7 @@ class Agent():
         if add_noise:
             for j in range(self.action_size):
                 if np.random.rand() < self.EXPLORATION_RATE:
-                    action[0,j] += np.random.normal(0,0.5)                        
+                    action[0,j] += np.random.normal()*0.3                       
         return np.clip(action, -1, 1)
 
     def reset(self):
@@ -92,10 +106,13 @@ class Agent():
 
         # ---------------------------- update critic ---------------------------- #
         # Get predicted next-state actions and Q values from target models
-        actions_next = self.actor_target(next_states)
-        Q_targets_next = self.critic_target(next_states, actions_next)
+        
+        for i in range(20):
+            actions_next = self.actor_target(next_states)
+            Q_targets_next = self.critic_target(next_states, actions_next)
+            
         # Compute Q targets for current states (y_i)
-        Q_targets = rewards + (gamma * Q_targets_next * (1 - dones))
+        Q_targets = rewards + (gamma * Q_targets_next*(1-dones))
         # Compute critic loss
         Q_expected = self.critic_local(states, actions)
         critic_loss = F.mse_loss(Q_expected, Q_targets)
@@ -114,8 +131,9 @@ class Agent():
         self.actor_optimizer.step()
 
         # ----------------------- update target networks ----------------------- #
-        self.soft_update(self.critic_local, self.critic_target, TAU)
-        self.soft_update(self.actor_local, self.actor_target, TAU)                     
+        if self.i % target_step_update == 0:
+            self.soft_update(self.critic_local, self.critic_target, TAU)
+            self.soft_update(self.actor_local, self.actor_target, TAU)                     
 
     def soft_update(self, local_model, target_model, tau):
         """Soft update model parameters.
