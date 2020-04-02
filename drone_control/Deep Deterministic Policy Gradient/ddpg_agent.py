@@ -1,22 +1,25 @@
 import numpy as np
 import random
 from collections import namedtuple, deque
-
+import pickle
 from model import Actor, Critic
-from drone_modelo import DinamicaDrone
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
 
 BUFFER_SIZE = int(1e6)  # replay buffer size
-BATCH_SIZE = 124      # minibatch size
-GAMMA = 0.95           # discount factor
-TAU = 0.01            # for soft update of target parameters
-LR_ACTOR = 0.001        # learning rate of the actor 
-LR_CRITIC = 0.001        # learning rate of the critic
+BATCH_SIZE = 256      # minibatch size
+MIN_MEM_SIZE = 30*BATCH_SIZE
+GAMMA = 0.99           # discount factor
+TAU = 0.008           # for soft update of target parameters
+LR_ACTOR = 0.0002        # learning rate of the actor 
+LR_CRITIC = 0.0002        # learning rate of the critic
 WEIGHT_DECAY = 0.0     # L2 weight decay
-device = torch.device("cuda:0")
-target_step_update = 5
+POLICY_TRAIN_FREQ = 2
+device = torch.device("cpu")
+target_step_update = 1
+
+
 
 class Agent():
     """Interacts with and learns from the environment."""
@@ -30,16 +33,14 @@ class Agent():
             action_size (int): dimension of each action
             random_seed (int): random seed
         """
-        self.EXPLORATION_IN = 0.5
-        self.EXPLORATION_RATE = 1
-        self.EXPLORATION_DECAY = 0.001
+        self.mu = 0.57
+        self.theta = 0.3
+        self.sigma = 0.05
         self.state_size = state_size
         self.action_size = action_size
+        self.i = 0
         # self.seed = random.seed(random_seed)
         
-
-            
-                   
         # Actor Network (w/ Target Network)
         self.actor_local = Actor(state_size, action_size, random_seed).to(device)
         self.actor_target = Actor(state_size, action_size, random_seed).to(device)
@@ -65,28 +66,30 @@ class Agent():
     def step(self, state, action, reward, next_state, done, i):
         """Save experience in replay memory, and use random sample from buffer to learn."""
         # Save experience / reward
-        self.memory.add(state, action, reward, next_state, done)
-        self.i = i
-
+        self.memory.add(state, action, reward, next_state, done)        
         # Learn, if enough samples are available in memory
-        if len(self.memory) > 10*BATCH_SIZE:
+        if len(self.memory) > MIN_MEM_SIZE:
               experiences = self.memory.sample()
               self.learn(experiences, GAMMA)
-
+              self.rodada_soma = 0
+        elif done:
+            self.rodada_soma = 1
+            print('Populando a memória')
+    
+    def OU(self,x):
+            return self.theta * (self.mu - x) + self.sigma * np.random.randn()
+        
     def act(self, state, add_noise, i):
         """Returns actions for given state as per current policy."""
         state = torch.from_numpy(state).float().to(device)
         self.actor_local.eval()
         with torch.no_grad():
             action = self.actor_local(state).cpu().data.numpy()
-        self.actor_local.train()
-        self.EXPLORATION_RATE = self.EXPLORATION_IN*np.exp(-self.EXPLORATION_DECAY*i)
+            action = np.array([action])
         if add_noise:
-            for j in range(self.action_size):
-                if np.random.rand() < self.EXPLORATION_RATE:
-                    action[0,j] += np.random.normal()*0.3                       
-        return np.clip(action, -1, 1)
-
+                action += np.array([[self.OU(action[0,0]),self.OU(action[0,1]),self.OU(action[0,2]),self.OU(action[0,3])]])
+        return np.clip(action, 0, 1)
+    
     def reset(self):
         self.noise.reset()
 
@@ -102,36 +105,27 @@ class Agent():
             experiences (Tuple[torch.Tensor]): tuple of (s, a, r, s', done) tuples 
             gamma (float): discount factor
         """
-        states, actions, rewards, next_states, dones = experiences
+        state, action, reward, next_state, done = experiences
 
         # ---------------------------- update critic ---------------------------- #
-        # Get predicted next-state actions and Q values from target models
-        
-        for i in range(20):
-            actions_next = self.actor_target(next_states)
-            Q_targets_next = self.critic_target(next_states, actions_next)
-            
-        # Compute Q targets for current states (y_i)
-        Q_targets = rewards + (gamma * Q_targets_next*(1-dones))
-        # Compute critic loss
-        Q_expected = self.critic_local(states, actions)
-        critic_loss = F.mse_loss(Q_expected, Q_targets)
-        # Minimize the loss
+        # Get predicted next-state actions and Q values from target models       
+        next_action = self.actor_target(next_state)
+        Q1_alvo, Q2_alvo = self.critic_target(next_state,next_action)
+        target_Q = reward+((1-done)*GAMMA*torch.min(Q1_alvo,Q2_alvo)).detach()
+        Q1_at, Q2_at = self.critic_local(state,action)
+        self.critic_loss = F.mse_loss(Q1_at,target_Q)+F.mse_loss(Q2_at,target_Q)
         self.critic_optimizer.zero_grad()
-        critic_loss.backward()
+        self.critic_loss.backward()
         self.critic_optimizer.step()
-
+        self.i += 1
         # ---------------------------- update actor ---------------------------- #
         # Compute actor loss
-        actions_pred = self.actor_local(states)
-        actor_loss = -self.critic_local(states, actions_pred).mean()
-        # Minimize the loss
-        self.actor_optimizer.zero_grad()
-        actor_loss.backward()
-        self.actor_optimizer.step()
-
-        # ----------------------- update target networks ----------------------- #
-        if self.i % target_step_update == 0:
+        if self.i % POLICY_TRAIN_FREQ == 0:
+            self.actor_loss = -self.critic_local.Q1(state, self.actor_local(state)).mean()
+            self.actor_optimizer.zero_grad()
+            self.actor_loss.backward()
+            self.actor_optimizer.step()   
+            # ----------------------- update target networks ----------------------- #
             self.soft_update(self.critic_local, self.critic_target, TAU)
             self.soft_update(self.actor_local, self.actor_target, TAU)                     
 
@@ -185,3 +179,5 @@ class ReplayBuffer:
     def __len__(self):
         """Return the current size of internal memory."""
         return len(self.memory)
+
+        

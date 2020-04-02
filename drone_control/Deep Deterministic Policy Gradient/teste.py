@@ -1,18 +1,21 @@
-# Testes da dinamica 
-from drone_modelo import DinamicaDrone
-import numpy as np
+from collections import deque
+import pickle
 
-#Dinamica do sistema (passo de tempo e número máximo de iterações)
-passo_t = 0.01 
-n_max = 600
-#inicializa o ambiente
-env = DinamicaDrone(passo_t,n_max)
+a = deque(maxlen=10)
 
+a = [1,1,1,1,1,1,1,1,1,1]
 
-entrada = np.array([[1/3*2-1+0.1,1/3*2-1,1/3*2-1-0.1,1/3*2-1]])
+with open('teste','wb') as teste_file:
+    pickle.dump(a,teste_file)
+    
+with open('teste','rb') as teste_file:
+    b = pickle.load(teste_file)
+    
+    
+    
 
-env.passo(entrada)
-env.y = np.zeros([24])
-while not env.reset:
-    env.passo(entrada)
-print(env.y)
+    
+    
+    
+    
+    
