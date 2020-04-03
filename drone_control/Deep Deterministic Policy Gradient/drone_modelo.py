@@ -8,24 +8,50 @@ m, g = 1.2, 10
 mod_omega = 7000
 b = 1.875e-7
 B = 1.875e-8
-
-RPM_Normal=(m*g/b/4)**(0.5)
-Razao_Normal = RPM_Normal/mod_omega
-acao_neutra = np.ones([1,4])*Razao_Normal
+J_xx,J_yy,J_zz = 8.3e-3,8.3e-3,15.5e-3
+    
+d = 0.25
+      
+acao_neutra = np.array([[0.57143,0.57143,0.57143,0.57143]])
 print(acao_neutra)
 
-def eq_drone(t,x,R,entrada):
+def mat_rot(phi,theta,psi):
+    sphi = np.sin(phi)
+    stheta = np.sin(theta)
+    spsi = np.sin(psi)
+    cphi = np.cos(phi)
+    ctheta = np.cos(theta)
+    cpsi = np.cos(psi)
     
-    J_phi,J_theta,J_psi = 8.3e-3,8.3e-3,15.5e-3
+    R_z = np.array([[cpsi,-spsi,0],
+                    [spsi,cpsi,0],
+                    [0,0,1]])
     
-    d = 0.25
-      
-    w1 = (entrada[0,0])*mod_omega
+    R_y = np.array([[ctheta,0,stheta],
+                    [0,1,0],
+                    [-stheta,0,ctheta]])
+    
+    R_x = np.array([[1,0,0],
+                    [0,cphi,-sphi],
+                    [0,sphi,cphi]])
+    
+    W_R = np.array([[1,0,-stheta],
+                    [0, cphi, ctheta*sphi],
+                    [0,-sphi, ctheta*cphi]])
+    W_R_Inv = np.linalg.inv(W_R)
+    
+    if np.any(np.array([np.isnan(W_R_Inv),np.isinf(W_R_Inv)])):
+        print('Atenção, divergencia na matriz de rotação de velocidades angulares')               
+    return np.transpose(np.dot(R_z,np.dot(R_y,R_z))),W_R_Inv
+    
+def eq_drone(t,x,entrada):    
+
+    w1 = (entrada[0,0])*mod_omega #Velocidade angulares dos motores
     w2 = (entrada[0,1])*mod_omega
     w3 = (entrada[0,2])*mod_omega
     w4 = (entrada[0,3])*mod_omega
     
-    f1 = b*(w1**2)
+    f1 = b*(w1**2) #Forças e momentos nos motores
     f2 = b*(w2**2)
     f3 = b*(w3**2)
     f4 = b*(w4**2)
@@ -34,10 +60,30 @@ def eq_drone(t,x,R,entrada):
     m2 = B*(w2**2)
     m3 = B*(w3**2)
     m4 = B*(w4**2)
-
+         
     F = np.array([[0],[0],[(f1+f2+f3+f4)]])
+      
+    pos_phi = x[6]
+    pos_theta = x[7]
+    pos_psi = x[8]
+    
+    R,W_R = mat_rot(pos_phi,pos_theta,pos_psi)
     F_VEC = np.dot(R,F)
 
+    accel_w_xx = (f1-f3)*d/J_xx
+    accel_w_yy = (f2-f4)*d/J_yy
+    accel_w_zz = (m1-m2+m3-m4)/J_zz
+    
+    W = np.array([[x[9]],
+                  [x[10]],
+                  [x[11]]])
+    
+    V_eul = np.dot(W_R,W)
+
+    vel_phi=V_eul[0]
+    vel_theta=V_eul[1]
+    vel_psi=V_eul[2]
+    
     vel_x = x[1]
     accel_x = F_VEC[0]/m
 
@@ -46,36 +92,26 @@ def eq_drone(t,x,R,entrada):
 
     vel_z = x[5]
     accel_z = F_VEC[2]/m-g 
+    
+    # Resultado da integral em ordem: 0 x, 1 vx, 2 y, 3 vy, 4 z, 5 vz, 6 phi, 7  theta, 8 psi, 9 w_xx, 10 w_yy, 11 w_zz                          
+    return np.array([vel_x,accel_x,vel_y,accel_y,vel_z,accel_z,vel_phi,vel_theta,vel_psi,accel_w_xx,accel_w_yy,accel_w_zz])
 
-    
-    vel_phi = x[7]
-    accel_phi = (f1-f3)*d/J_phi
-    
-    
-    vel_theta = x[9]
-    accel_theta = (f2-f4)*d/J_theta
-    
-    
-    vel_psi = x[11]
-    accel_psi = (m1-m2+m3-m4)/J_psi
-                              
-    return np.array([vel_x,accel_x,vel_y,accel_y,vel_z,accel_z,vel_phi,accel_phi,vel_theta,accel_theta,vel_psi,accel_psi])
     
 class DinamicaDrone():
     
     def __init__(self,passo_t,n_max):
         self.peso_posicao = 2
-        self.peso_angulos = 1
+        self.peso_angulos = 0.2
         self.peso_velocidade = 0
         self.peso_velocidade_ang = 0
         self.peso_controle = 0  
         self.peso_var_controle = 0
         
-        self.b_b_z = 10
-        self.b_b_vz = 10
-        self.b_b_phi = 1*np.pi
-        self.b_b_theta = 1*np.pi
-        self.b_b_psi = 1*np.pi
+        self.b_b_z = 3
+        self.b_b_vz = 3
+        self.b_b_phi = np.pi/2-0.1
+        self.b_b_theta = np.pi/2-0.1
+        self.b_b_psi = np.pi/2-0.1
       
         self.estados = 12  
         
@@ -86,30 +122,8 @@ class DinamicaDrone():
         self.n_max = n_max          
         self.passo_t = passo_t
     
-        self.lista_nomes = ('x','d_x','y','d_y', 'z','d_z','phi','d_phi','theta','d_theta','psi','d_psi')      
+        self.lista_nomes = ('x','d_x','y','d_y', 'z','d_z','phi','theta','psi','w_xx','w_yy','w_zz')      
         self.lista_acoes = ('F1','F2','F3','F4')
-        
-    def mat_rot(self,phi,theta,psi):
-        sphi = np.sin(phi)
-        stheta = np.sin(theta)
-        spsi = np.sin(psi)
-        cphi = np.cos(phi)
-        ctheta = np.cos(theta)
-        cpsi = np.cos(psi)
-        
-        R_z = np.array([[cpsi,spsi,0],
-                        [-spsi,cpsi,0],
-                        [0,0,1]])
-        
-        R_y = np.array([[ctheta,0,-stheta],
-                        [0,1,0],
-                        [stheta,0,ctheta]])
-        
-        R_x = np.array([[1,0,0],
-                        [0,cphi,sphi],
-                        [0,-sphi,cphi]])
-                       
-        return np.dot(R_x,np.dot(R_y,R_z))             
         
         
     def passo(self,acao):
@@ -121,20 +135,16 @@ class DinamicaDrone():
             y_0 = np.random.rand(self.estados)-0.5
             self.acao_ant = acao_neutra
             self.reset = False
-            self.i = 0
-            self.R = self.mat_rot(y_0[6],y_0[8],y_0[10])
+            self.i = 0           
         self.entrada = acao     
-        
-        
-        self.saida = (integrate.solve_ivp(eq_drone,(0,self.passo_t),y_0, args=[self.R,self.entrada])).y
-        self.R = self.mat_rot(self.y[18],self.y[20],self.y[22])
-        
-        self.y = np.append(np.transpose(self.saida[:,0]),np.transpose(self.saida[:,-1]))
-        self.entrada_agente = np.concatenate((self.y[12:18],np.array([self.y[19],self.y[21],self.y[23]]),self.R[0,:],self.R[1,:],self.R[2,:]),axis=0)
+                
+        self.saida = (integrate.solve_ivp(eq_drone,(0,self.passo_t),y_0, args=[self.entrada]))
+
+        self.saida = self.saida.y
+        self.y = np.append(np.transpose(self.saida[:,0]),np.transpose(self.saida[:,-1]))        
+        self.entrada_agente = self.y[12:25]
         self.reset_fun()
         self.pontos_fun(self.acao_ant,acao)
-        self.estado_novo = self.y[self.estados:2*self.estados+1]
-        self.acao_ant = acao
             
     def reset_fun(self):
         #X
@@ -152,28 +162,28 @@ class DinamicaDrone():
         #PHI
         cond_phi = abs(self.y[18])<self.b_b_phi
         #THETA
-        cond_theta = abs(self.y[20])<self.b_b_theta
+        cond_theta = abs(self.y[19])<self.b_b_theta
         #PSI
-        cond_psi = abs(self.y[22])<self.b_b_psi
+        cond_psi = abs(self.y[20])<self.b_b_psi
         #N
         self.cond_n = self.i < self.n_max
         
         if all([cond_x,cond_vx,cond_y,cond_vy,cond_z,cond_vz,cond_phi,cond_theta,cond_psi,self.cond_n]):
             self.reset = False 
-        else: 
+        else:
             self.reset = True
         
     def pontos_fun(self,acao_ant,acao):
         
-        pontos_posicao = ((np.linalg.norm([10,10,10])-np.linalg.norm(np.array([self.y[12],self.y[14],self.y[16]])))/10)**2*self.peso_posicao
+        pontos_posicao = ((np.linalg.norm([10,10,10])-np.linalg.norm(np.array([self.y[12],self.y[14],self.y[16]])))/10)**4*self.peso_posicao
         
-        pontos_angulo = ((np.linalg.norm([np.pi,np.pi,np.pi])-np.linalg.norm(np.array([self.y[18],self.y[20],self.y[22]])))/np.pi)**2*self.peso_angulos
+        pontos_angulo = ((np.linalg.norm([np.pi,np.pi,np.pi])-np.linalg.norm(np.array([self.y[18],self.y[19],self.y[20]])))/np.pi)**4*self.peso_angulos
         
-        pontos_velocidade_pos = ((np.linalg.norm([3,3,3])-np.linalg.norm(np.array([self.y[13],self.y[15],self.y[17]])))/3)**2*self.peso_velocidade
+        pontos_velocidade_pos = ((np.linalg.norm([3,3,3])-np.linalg.norm(np.array([self.y[13],self.y[15],self.y[17]])))/3)**4*self.peso_velocidade
 
-        pontos_controle = -((np.linalg.norm(acao_neutra-acao))**2*self.peso_controle)
+        pontos_controle = -((np.linalg.norm(acao_neutra-acao))**4*self.peso_controle)
         
-        pontos_var_controle = -((np.linalg.norm(acao_ant-acao))**2*self.peso_var_controle)
+        pontos_var_controle = -((np.linalg.norm(acao_ant-acao))**4*self.peso_var_controle)
         
         if self.reset == False or not self.cond_n:
             self.pontos = pontos_posicao+pontos_velocidade_pos+pontos_angulo+pontos_controle+pontos_var_controle
@@ -187,7 +197,7 @@ class DinamicaDrone():
         saida_acao = acao_neutra       
         saida = np.array([self.y])
         while not self.reset:
-            acao = agent.act(self.entrada_agente,False,rodada)
+            acao = agent.act_target(self.entrada_agente)
             self.passo(acao)
             saida = np.append(saida,np.array([self.y]),axis=0)
             saida_acao = np.append(saida_acao,acao,axis=0)

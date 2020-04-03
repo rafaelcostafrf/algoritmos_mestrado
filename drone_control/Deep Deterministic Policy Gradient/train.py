@@ -10,7 +10,7 @@ import warnings
 
 empty_cache()
 
-rodadas = 3000
+rodadas = 250
 acao_neutra = np.array([[0.57143,0.57143,0.57143,0.57143]])
 
 #Dinamica do sistema (passo de tempo e número máximo de iterações)
@@ -21,13 +21,13 @@ env = DinamicaDrone(passo_t,n_max)
 
 
 #imprime informaçoes a cada n rodadass
-n_imp = 100
+n_imp = 1
 
 # quantidade de açoes
 action_size = 4
 
 # quantidade de estados
-state_size = 18
+state_size = 12
 
 agent = Agent(state_size=state_size, action_size=action_size, random_seed=1)
 scores_deque = deque(maxlen=n_imp)
@@ -38,7 +38,7 @@ rodada = 0
 # plt.close('all')
 
 
-for k in range(rodadas):
+while rodada < rodadas:
     env.reset=True
     rodada += 1
     env.passo(acao_neutra)
@@ -46,7 +46,7 @@ for k in range(rodadas):
     scores = 0    
     
     while True:
-        action = agent.act(states,True,rodada)
+        action = agent.act(states,True)
         env.passo(action)
         next_state = env.entrada_agente        
         rewards = env.pontos
@@ -69,7 +69,7 @@ for k in range(rodadas):
         states = next_state                                
     rodada -= agent.rodada_soma
     if rodada % n_imp == 0 and not agent.rodada_soma: 
-        env.impr_graf([0,2,4,6,8,10],[0,1,2,3],agent,rodada)
+        env.impr_graf([0,2,4,6,7,8],[0,1,2,3],agent,rodada)
         print('Rodada: %i Passos %.2f Perca Critico: %.2f Perca Ator: %.2f Pontos: %.2f' %(rodada, np.mean(passos_deque), m_perca_critico, m_perca_ator, np.mean(scores_deque)))
 
 torch.save(agent.critic_local.state_dict(), 'modelos/critic_local.pt')
