@@ -20,3 +20,5 @@ O Ruído gaussiano foi substituido novamente pelo ruído OU (Ornstein–Uhlenbec
 
 Ainda é necessário fazer uma limpeza no código, principalmente para melhor entendimento e talvez uma melhoria no desempenho, talvez rodar épocas em paralelo(?).
 
+![Resultados](/modelos/resultado_1.png)
+
