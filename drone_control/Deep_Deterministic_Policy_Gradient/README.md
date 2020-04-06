@@ -2,9 +2,9 @@
 
 Foi obtido por enquanto apenas controle de um sistema com todos os 12 graus de liberdade do quadrotor, com controle de posição no sistema de coordenadas inercial.
 
-O algoritmo é de difícil convergencia, por volta de 5000 épocas, com máximo de 500 passos por época, demorou cerca de 12 horas em um computador 'mediano' utilizando processamento CUDA, sendo necessário trocar a taxa de aprendizado algumas vezes durante o processo.
+O algoritmo é de difícil convergencia, por volta de 5000 épocas, com máximo de 500 passos por época, demorou cerca de 4 horas em um computador 'mediano' utilizando processamento CUDA, sendo necessário trocar a taxa de aprendizado algumas vezes durante o processo.
 
-Cada época é iniciada com velocidades e posições iniciais distribuídas aleatoriamente entre [-0.5,0.5]. O bounding box da simulação é [-10,10] na posição linear, [-10,10] nas velocidades lineares e [-pi,pi] nas posições angulares, se o sistema passar desses pontos, a simulação é resetada.
+Cada época é iniciada com velocidades e posições iniciais distribuídas aleatoriamente entre [-0.5,0.5]. O bounding box da simulação é [-3,3] na posição linear, [-3,3] nas velocidades lineares e [-pi/2,pi/2] nas posições angulares, se o sistema passar desses pontos, a simulação é resetada.
 
 A convergência é difícil pelo fato de que são 12 graus de liberdade, subatuados e fortemente acoplados. A atuação do controlador se dá diretamente na velocidade angular do motor.
 
