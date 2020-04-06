@@ -20,5 +20,5 @@ O Ruído gaussiano foi substituido novamente pelo ruído OU (Ornstein–Uhlenbec
 
 Ainda é necessário fazer uma limpeza no código, principalmente para melhor entendimento e talvez uma melhoria no desempenho, talvez rodar épocas em paralelo(?).
 
-![Imagem](/modelos/Resultado_1.png)
+![Imagem](drone_control/'Deep Deterministic Policy Gradient'/modelos/Resultado_1.png)
 
