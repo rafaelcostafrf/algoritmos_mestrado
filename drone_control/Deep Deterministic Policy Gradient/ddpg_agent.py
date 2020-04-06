@@ -6,18 +6,23 @@ from model import Actor, Critic
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
-
+import time
+import sys
 BUFFER_SIZE = int(1e6)  # replay buffer size
-BATCH_SIZE = 256      # minibatch size
-MIN_MEM_SIZE = 30*BATCH_SIZE
+
 GAMMA = 0.99           # discount factor
-TAU = 0.001           # for soft update of target parameters
+TAU = 0.007           # for soft update of target parameters
 LR_ACTOR = 0.001        # learning rate of the actor 
-LR_CRITIC = 0.001        # learning rate of the critic
+LR_CRITIC = 0.001       # learning rate of the critic
 WEIGHT_DECAY = 0.0     # L2 weight decay
 POLICY_TRAIN_FREQ = 2
-device = torch.device("cpu")
-target_step_update = 1
+STEP_TRAIN_FREQ = 5
+BATCH_REP = 2
+BATCH_SIZE = 256      # minibatch size
+
+MIN_MEM_SIZE = 100*BATCH_SIZE
+device = torch.device("cuda:0")
+
 
 
 
@@ -34,11 +39,13 @@ class Agent():
             random_seed (int): random seed
         """
         self.mu = 0.57143
-        self.theta = 0.75
-        self.sigma = 0.3
+        self.theta = 0.35
+        self.sigma = 0.1
         self.state_size = state_size
         self.action_size = action_size
         self.i = 0
+        self.passo = 0
+        self.rodada_soma = 0
         # self.seed = random.seed(random_seed)
         
         # Actor Network (w/ Target Network)
@@ -63,18 +70,24 @@ class Agent():
 
 
     
-    def step(self, state, action, reward, next_state, done, i):
+    def step(self, state, action, reward, next_state, done):
         """Save experience in replay memory, and use random sample from buffer to learn."""
         # Save experience / reward
         self.memory.add(state, action, reward, next_state, done)        
+        self.passo += 1        
         # Learn, if enough samples are available in memory
         if len(self.memory) > MIN_MEM_SIZE:
-              experiences = self.memory.sample()
-              self.learn(experiences, GAMMA)
-              self.rodada_soma = 0
+            if self.passo % STEP_TRAIN_FREQ == 0:  
+                for i in range(BATCH_REP):
+                  experiences = self.memory.sample()
+                  self.learn(experiences, GAMMA)
+            self.rodada_soma = 0
         elif done:
-            self.rodada_soma = 1
-            print('Populando a memória')
+            if self.rodada_soma == 0:                    
+                print('Populando a memória')
+                self.rodada_soma = 1
+            string = str('\r Populando: %.2f %%' %(len(self.memory)/MIN_MEM_SIZE*100))
+            sys.stdout.write(string)
     
     def OU(self,x):
             return self.theta * (self.mu - x) + self.sigma * np.random.randn()
@@ -82,7 +95,6 @@ class Agent():
     def act(self, state, add_noise):
         """Returns actions for given state as per current policy."""
         state = torch.from_numpy(state).float().to(device)
-        self.actor_local.eval()
         with torch.no_grad():
             action = self.actor_local(state).cpu().data.numpy()
             action = np.array([action])
@@ -90,13 +102,14 @@ class Agent():
                 action += np.array([[self.OU(action[0,0]),self.OU(action[0,1]),self.OU(action[0,2]),self.OU(action[0,3])]])
         return np.clip(action, 0, 1)
     
-    def act_target(self, state):
+    def act_target(self, state, add_noise):
         """Returns actions for given state as per current policy."""
         state = torch.from_numpy(state).float().to(device)
-        self.actor_target.eval()
         with torch.no_grad():
             action = self.actor_target(state).cpu().data.numpy()
             action = np.array([action])
+        if add_noise:
+            action += np.array([[self.OU(action[0,0]),self.OU(action[0,1]),self.OU(action[0,2]),self.OU(action[0,3])]])
         return np.clip(action, 0, 1)
     
     def reset(self):
@@ -121,10 +134,12 @@ class Agent():
         next_action = self.actor_target(next_state)
         with torch.no_grad():
             next_action_cte = next_action.cpu().data.numpy()
-            next_action_cte = np.array([[self.OU(next_action[0,0]),self.OU(next_action[0,1]),self.OU(next_action[0,2]),self.OU(next_action[0,3])]])
+            for i in range(len(next_action_cte)):
+                next_action_cte[i,:] = np.array([self.OU(next_action_cte[i,0]),self.OU(next_action_cte[i,1]),self.OU(next_action_cte[i,2]),self.OU(next_action_cte[i,3])])
             next_action_noise = torch.FloatTensor(next_action_cte).to(device)
         next_action += next_action_noise
         next_action=next_action.clamp(0,1)
+
         Q1_alvo, Q2_alvo = self.critic_target(next_state,next_action)
         
         target_Q = reward+((1-done)*GAMMA*torch.min(Q1_alvo,Q2_alvo)).detach()

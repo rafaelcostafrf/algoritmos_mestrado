@@ -3,8 +3,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-HIDDEN_UNITS_1 = 400
-HIDDEN_UNITS_2 = 300
+HIDDEN_UNITS_1 = 124
+HIDDEN_UNITS_2 = 124
 MAX_ACTION = 1
 
 def hidden_init(layer):
@@ -22,7 +22,7 @@ class Actor(nn.Module):
         self.l1 = nn.Linear(state_size, fc1_units)
         self.l2 = nn.Linear(fc1_units, fc2_units)
         self.l3 = nn.Linear(fc2_units, action_size)
-        self.reset_parameters()
+        # self.reset_parameters()
 
     def reset_parameters(self):
         self.l1.weight.data.uniform_(-3e-1, 3e-1)
@@ -52,7 +52,7 @@ class Critic(nn.Module):
         self.l5 = nn.Linear(fcs1_units, fc2_units)
         self.l6 = nn.Linear(fc2_units, 1)        
         
-        self.reset_parameters()
+        # self.reset_parameters()
 
     def reset_parameters(self):
         self.l1.weight.data.uniform_(-3e-1, 3e-1)
