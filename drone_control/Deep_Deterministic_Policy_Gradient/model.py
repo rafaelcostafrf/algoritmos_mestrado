@@ -3,14 +3,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-HIDDEN_UNITS_1 = 124
-HIDDEN_UNITS_2 = 124
-MAX_ACTION = 1
-
-def hidden_init(layer):
-    fan_in = layer.weight.data.size()[0]
-    lim = 1. / np.sqrt(fan_in)
-    return (-lim, lim)
+HIDDEN_UNITS_1 = 256*3
+HIDDEN_UNITS_2 = 256*2
+MAX_ACTION = 7000
+b = 1.875e-7
 
 class Actor(nn.Module):
 
@@ -22,18 +18,14 @@ class Actor(nn.Module):
         self.l1 = nn.Linear(state_size, fc1_units)
         self.l2 = nn.Linear(fc1_units, fc2_units)
         self.l3 = nn.Linear(fc2_units, action_size)
-        # self.reset_parameters()
 
-    def reset_parameters(self):
-        self.l1.weight.data.uniform_(-3e-1, 3e-1)
-        self.l2.weight.data.uniform_(-3e-1, 3e-1)
-        self.l3.weight.data.uniform_(-3e-1, 3e-1)
 
     def forward(self, state):
-        
         x = torch.relu(self.l1(state))
         x = torch.relu(self.l2(x))
-        x = MAX_ACTION*torch.sigmoid(self.l3(x))
+        x = torch.sigmoid(self.l3(x))
+        x = MAX_ACTION*x
+        x = torch.pow(x,2)*b 
         return x
 
 class Critic(nn.Module):
@@ -51,16 +43,7 @@ class Critic(nn.Module):
         self.l4 = nn.Linear(state_size+action_size, fcs1_units)
         self.l5 = nn.Linear(fcs1_units, fc2_units)
         self.l6 = nn.Linear(fc2_units, 1)        
-        
-        # self.reset_parameters()
 
-    def reset_parameters(self):
-        self.l1.weight.data.uniform_(-3e-1, 3e-1)
-        self.l2.weight.data.uniform_(-3e-1, 3e-1)
-        self.l3.weight.data.uniform_(-3e-1, 3e-1)
-        self.l4.weight.data.uniform_(-3e-1, 3e-1)
-        self.l5.weight.data.uniform_(-3e-1, 3e-1)
-        self.l6.weight.data.uniform_(-3e-1, 3e-1)
 
     def forward(self, state, action):
         xu = torch.cat([state,action],1)

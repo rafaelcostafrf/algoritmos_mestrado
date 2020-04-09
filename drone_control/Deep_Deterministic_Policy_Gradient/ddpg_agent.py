@@ -10,17 +10,15 @@ import time
 import sys
 BUFFER_SIZE = int(1e6)  # replay buffer size
 
-GAMMA = 0.99           # discount factor
-TAU = 0.007           # for soft update of target parameters
-LR_ACTOR = 0.001        # learning rate of the actor 
-LR_CRITIC = 0.001       # learning rate of the critic
-WEIGHT_DECAY = 0.0     # L2 weight decay
+GAMMA = 0.99            # discount factor
+TAU = 0.005              # for soft update of target parameters
+LR_ACTOR = 0.001      # learning rate of the actor 
+LR_CRITIC = 0.001     # learning rate of the critic
+WEIGHT_DECAY = 0.0      # L2 weight decay
 POLICY_TRAIN_FREQ = 2
-STEP_TRAIN_FREQ = 5
-BATCH_REP = 2
-BATCH_SIZE = 256      # minibatch size
+BATCH_SIZE = 200       # minibatch size
 
-MIN_MEM_SIZE = 100*BATCH_SIZE
+MIN_MEM_SIZE = 10*BATCH_SIZE
 device = torch.device("cuda:0")
 
 
@@ -29,7 +27,7 @@ device = torch.device("cuda:0")
 class Agent():
     """Interacts with and learns from the environment."""
     
-    def __init__(self, state_size, action_size, random_seed):
+    def __init__(self, state_size, action_size, random_seed, rodadas_totais):
         """Initialize an Agent object.
         
         Params
@@ -38,13 +36,18 @@ class Agent():
             action_size (int): dimension of each action
             random_seed (int): random seed
         """
-        self.mu = 0.57143
-        self.theta = 0.35
-        self.sigma = 0.1
+        self.mu = 0
+        self.theta = 0
+        self.sigma = 5
+        self.sigma_min = 2
+        self.sigma_int = self.sigma
+        steps_to_min = rodadas_totais/2
+        self.exploration_decay = -np.log(self.sigma_min/self.sigma)/steps_to_min
+        
         self.state_size = state_size
         self.action_size = action_size
         self.i = 0
-        self.passo = 0
+        self.rodada = 0
         self.rodada_soma = 0
         # self.seed = random.seed(random_seed)
         
@@ -70,47 +73,46 @@ class Agent():
 
 
     
-    def step(self, state, action, reward, next_state, done):
+    def step(self, state, action, reward, next_state, done, rodada):
         """Save experience in replay memory, and use random sample from buffer to learn."""
         # Save experience / reward
-        self.memory.add(state, action, reward, next_state, done)        
-        self.passo += 1        
+        self.rodada = rodada
+        self.memory.add(state, action, reward, next_state, done)                
         # Learn, if enough samples are available in memory
         if len(self.memory) > MIN_MEM_SIZE:
-            if self.passo % STEP_TRAIN_FREQ == 0:  
-                for i in range(BATCH_REP):
-                  experiences = self.memory.sample()
-                  self.learn(experiences, GAMMA)
-            self.rodada_soma = 0
-        elif done:
+            if self.rodada_soma == 1:
+                sys.stdout.write('\n')
+                self.rodada_soma = 0
+            experiences = self.memory.sample()
+            self.learn(experiences, GAMMA)
+        else:
             if self.rodada_soma == 0:                    
-                print('Populando a memória')
                 self.rodada_soma = 1
-            string = str('\r Populando: %.2f %%' %(len(self.memory)/MIN_MEM_SIZE*100))
+            string = str('\rPopulando a memória: %.2f %%' %(len(self.memory)/MIN_MEM_SIZE*100))
             sys.stdout.write(string)
     
     def OU(self,x):
+            self.sigma = max(self.sigma_min,self.sigma_int*np.exp(-self.exploration_decay*self.rodada))
             return self.theta * (self.mu - x) + self.sigma * np.random.randn()
+
         
-    def act(self, state, add_noise):
+    def act_local(self, state, add_noise):
         """Returns actions for given state as per current policy."""
         state = torch.from_numpy(state).float().to(device)
         with torch.no_grad():
             action = self.actor_local(state).cpu().data.numpy()
-            action = np.array([action])
         if add_noise:
                 action += np.array([[self.OU(action[0,0]),self.OU(action[0,1]),self.OU(action[0,2]),self.OU(action[0,3])]])
-        return np.clip(action, 0, 1)
+        return np.clip(action, 0, 9)
     
     def act_target(self, state, add_noise):
         """Returns actions for given state as per current policy."""
         state = torch.from_numpy(state).float().to(device)
         with torch.no_grad():
             action = self.actor_target(state).cpu().data.numpy()
-            action = np.array([action])
         if add_noise:
             action += np.array([[self.OU(action[0,0]),self.OU(action[0,1]),self.OU(action[0,2]),self.OU(action[0,3])]])
-        return np.clip(action, 0, 1)
+        return np.clip(action, 0, 9)
     
     def reset(self):
         self.noise.reset()
@@ -138,7 +140,7 @@ class Agent():
                 next_action_cte[i,:] = np.array([self.OU(next_action_cte[i,0]),self.OU(next_action_cte[i,1]),self.OU(next_action_cte[i,2]),self.OU(next_action_cte[i,3])])
             next_action_noise = torch.FloatTensor(next_action_cte).to(device)
         next_action += next_action_noise
-        next_action=next_action.clamp(0,1)
+        next_action=next_action.clamp(0,9)
 
         Q1_alvo, Q2_alvo = self.critic_target(next_state,next_action)
         
