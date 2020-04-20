@@ -1,18 +1,22 @@
-import numpy as np
-from matplotlib import pyplot as plt
 import sys
 import torch
+import numpy as np
 import torch.nn.functional as F
+from matplotlib import pyplot as plt
+
 
 #PACOTES DO MODELO
 from DRONE_MODELO import DinamicaDrone, Q2Euler
 from UTILITIES import read_fromfile, write_tofile, rand_input, ReplayBuffer
 from NN_MODELS import Actor, Critic
 
+
+P_DEBUG = 0
+
 #TAXA DE APRENDIZADO DO CRITICO, DO ATOR, TAXA DE TRANSFERENCIA PARA A REDE ALVO E PESO DAS ACOES FUTURAS
 LEARNING_RATE_CRITIC = 0.001
-LEARNING_RATE_ACTOR = 0.001
-TAU = 0.005
+LEARNING_RATE_ACTOR = 0.0001
+TAU = 0.001
 GAMMA = 0.99
 
 #SEMENTE ALEATORIA PARA REPRODUTIBILIDADE
@@ -22,7 +26,7 @@ SEED = 0
 OBSERVATION = 10000
 
 #NUMERO DE OBSERVACOES COM A POLITICA ATUAL DO MODELO SALVO (ANTES DO TREINAMENTO)
-EXP_BEFORE_TRAIN = 0
+EXP_BEFORE_TRAIN = 10000
 
 #NUMERO TOTAL DE PASSOS DE EXPLORAÇÃO
 EXPLORATION = 10000000
@@ -48,16 +52,19 @@ EXPLORATION_NOISE_DECAY = 0
 #CLIP DE RUIDO (SE NECESSARIO) E PROBABILIDADE DE ENTRADAS PRE DETERMINADAS
 PROB_Z = 0.1
 PROB_PHI = 0.05
-PROB_THETA = 0.05 
+PROB_THETA = 0.05
 PROB_PSI = 0.05
-IN_PROB=np.array([PROB_Z,PROB_Z+PROB_PHI,PROB_Z+PROB_PHI+PROB_THETA,PROB_Z+PROB_PHI+PROB_THETA+PROB_PSI])
+IN_PROB=np.array([PROB_Z,
+                  PROB_Z+PROB_PHI,
+                  PROB_Z+PROB_PHI+PROB_THETA,
+                  PROB_Z+PROB_PHI+PROB_THETA+PROB_PSI])
 
 #RECOMPENSA MINIMA PARA FINALIZAR TREINAMENTO
-REWARD_THRESH = 5000
+REWARD_THRESH = np.inf
 
 #PASSO DA SIMULACAO, PASSOS MAXIMOS DO SISTEMA E FREQUENCIA DE VALIDACAO
 TIME_STEP = 0.01
-MAX_ENV_STEPS = 10000
+MAX_ENV_STEPS = 1000
 EVAL_FREQUENCY = 5000
 
 T = 2
@@ -89,7 +96,7 @@ class TD3(object):
 
         self.max_action = max_action
         self.env = env
-        
+
         try:
             self.load()
             print('Past models loaded')
@@ -112,7 +119,7 @@ class TD3(object):
         state = torch.FloatTensor(state.reshape(1, -1)).to(device)
         action = self.actor(state).cpu().data.numpy().flatten()
         if noise != 0:
-            action = (action + rand_input(1,noise,IN_PROB,numpy=1))
+            action = (action + rand_input(1, noise, IN_PROB, numpy=1))
 
         return action.clip(0, 9)
 
@@ -142,7 +149,7 @@ class TD3(object):
         next_state = torch.FloatTensor(y).to(device)
         done = torch.FloatTensor(1 - d).to(device)
         reward = torch.FloatTensor(r).to(device)
-        
+
         with torch.no_grad():
             # Select action according to policy and add clipped noise
             noise = torch.randn(action.size())*policy_noise
@@ -150,7 +157,7 @@ class TD3(object):
             next_action = (self.actor_target(next_state) + noise).clamp(0, self.max_action)
 
             # Compute the target Q value
-            target_Q1,target_Q2 = self.critic_target(next_state, next_action)
+            target_Q1, target_Q2 = self.critic_target(next_state, next_action)
             target_Q = torch.min(target_Q1, target_Q2)
             target_Q = reward + (done * discount * target_Q)
 
@@ -164,7 +171,7 @@ class TD3(object):
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
         self.critic_optimizer.step()
-        
+
 
         # Delayed policy updates
         if iterations % policy_freq == 0:
@@ -180,17 +187,17 @@ class TD3(object):
             # Update the frozen target models
             for param, target_param in zip(self.actor.parameters(), self.actor_target.parameters()):
                 target_param.data.copy_(tau * param.data + (1 - tau) * target_param.data)
-            
+
             for param, target_param in zip(self.critic.parameters(), self.critic_target.parameters()):
                 target_param.data.copy_(tau * param.data + (1 - tau) * target_param.data)
-                
+
 
     def save(self, filename, directory):
         torch.save(self.actor.state_dict(), '%s/%s_actor.pth' % (directory, filename))
         torch.save(self.actor_target.state_dict(), '%s/%s_actor_target.pth' % (directory, filename))
         torch.save(self.critic.state_dict(), '%s/%s_critic.pth' % (directory, filename))
         torch.save(self.critic_target.state_dict(), '%s/%s_critic_target.pth' % (directory, filename))
-        
+
 
     def load(self, filename="best_avg", directory="./saves"):
         self.actor.load_state_dict(torch.load('%s/%s_actor.pth' % (directory, filename),map_location=device))
@@ -218,7 +225,7 @@ class Runner():
         done_bool = float(done)
 
         # Store data in replay buffer
-        replay_buffer.add((self.obs, new_obs, action, reward, done_bool))
+        self.replay_buffer.add((self.obs, new_obs, action, reward, done_bool))
 
         self.obs = new_obs
 
@@ -230,6 +237,7 @@ class Runner():
         return reward, done
 
 def evaluate_policy(policy, env, eval_episodes=10):
+
     """run several episodes using the best agent policy
 
         Args:
@@ -246,37 +254,43 @@ def evaluate_policy(policy, env, eval_episodes=10):
         states = []
         actions = []
         rewards = []
-        resolvidos = 0
+        n_solved = 0
         eval_steps = 0
         for i in range(eval_episodes):
             reward_i = 0
             obs = env.inicial()
             done = False
             while not done:
-                action = policy.select_action(np.array(obs), noise=0)   
+                action = policy.select_action(np.array(obs), noise=0)
                 if i == eval_episodes-1:
                     q = np.array([env.y_0[6:10]]).T
                     phi,theta,psi = Q2Euler(q)
                     ang = np.array([phi,theta,psi])
-                    state_conv = np.concatenate((env.y_0[0:6],ang))
+                    state_conv = np.concatenate((env.y_0[0:6], ang))
                     states.append(state_conv)
                     actions.append(action)
                 obs, reward, done = env.passo(action)
+                resolvido = env.resolvido
                 reward_i += reward
                 eval_steps += 1
+                if resolvido:
+                    print('\rEvaluation episode %i solved successfully' %i)
+                    env.reset=True
+                    break
             rewards.append(reward_i)
+            n_solved += env.resolvido
         avg_reward = np.mean(rewards)
         var_reward = (np.var(rewards))**(0.5)
         states = np.array(states)
         actions = np.array(actions)/9
-        t = np.arange(0,len(states),1)*TIME_STEP
+        t = np.arange(0, len(states), 1)*TIME_STEP
 
         plt.cla()
 
         plot_list = [0,2,4,6,7,8]
-        plot_label = ['x','y','z','phi','theta','psi']
-        line_style = ['-','-','-','--','--','--']
-        plot_f = ['f1','f2','f3','f4']
+        plot_label = ['x', 'y', 'z', 'phi', 'theta', 'psi']
+        line_style = ['-', '-', '-', '--', '--', '--']
+        plot_f = ['f1', 'f2', 'f3', 'f4']
         for a,lab,ls in zip(plot_list, plot_label, line_style):
             plt.plot(t, states[:,a], label =lab, ls=ls, lw=1)
         for a,lab in zip(range(4), plot_f):
@@ -286,8 +300,7 @@ def evaluate_policy(policy, env, eval_episodes=10):
         plt.draw()
         plt.title(avg_reward)
         plt.pause(1)
-    return avg_reward, var_reward
-
+    return avg_reward, var_reward, n_solved
 
 def observe(env,replay_buffer,policy_env=0):
     """run episodes while taking random actions and filling replay_buffer
@@ -314,12 +327,12 @@ def observe(env,replay_buffer,policy_env=0):
         else:
             action = policy_env.select_action(np.array(obs), EXPLORATION_NOISE)
         new_obs, reward, done = env.passo(action)
-        
+
         replay_buffer.add((obs, new_obs, action, reward, done))
         time_steps += 1
 
         obs = new_obs
-        
+
         if done:
             obs = env.inicial()
             done = False
@@ -330,7 +343,6 @@ def observe(env,replay_buffer,policy_env=0):
             print("\rPopulating Buffer with policy actions {}/{}.".format(time_steps, observation_steps), end="")
             sys.stdout.flush()
     print('')
-
 
 
 def train(agent, test_env, val_env):
@@ -353,31 +365,35 @@ def train(agent, test_env, val_env):
     done = False
     evaluations = []
     best_avg = BEST_AVG
+    best_n_solved = BEST_SOLVE
     noise = EXPLORATION_NOISE
 
     while total_timesteps < EXPLORATION:
-
         if total_timesteps != 0:
-
             if done:
                 #Evaluate episode
                 if timesteps_since_eval >= EVAL_FREQUENCY:
                       timesteps_since_eval %= EVAL_FREQUENCY
-                      eval_reward, var_reward = evaluate_policy(agent, val_env)
+                      eval_reward, var_reward, n_solved = evaluate_policy(agent, val_env)
                       evaluations.append(eval_reward)
-                      print("\rTotal T: {:d} Episode Num: {:d} Total Reward: {:.2f}±{:.2f} Avg Reward: {:.2f} Exploration: {:.2f} \n".format(
-                        total_timesteps, episode_num, eval_reward,var_reward, np.mean(evaluations[-N_MEAN:]), noise), end="")
+                      print("\rTotal T: {:d} Episode Num: {:d} Total Reward: {:.2f}±{:.2f} Avg Reward: {:.2f} Exploration: {:.2f} Solved: {:d} \n".format(
+                        total_timesteps, episode_num, eval_reward,var_reward, np.mean(evaluations[-N_MEAN:]), noise, n_solved), end="")
                       sys.stdout.flush()
-                      if best_avg < eval_reward:
-                         write_tofile(total_timesteps,episode_num,eval_reward,1)
-                         best_avg = eval_reward
+                      if best_avg < eval_reward or n_solved > best_n_solved:
+                         if n_solved:
+                             best_avg = np.inf
+                         else:
+                             best_avg = eval_reward
+                         best_n_solved = n_solved
+                         write_tofile(total_timesteps,episode_num,eval_reward,n_solved,1)
+
                          print("\n------------------\nSaving best model\n------------------\n")
                          agent.save("best_avg","saves")
-                         if eval_reward >= REWARD_THRESH:
+                         if n_solved >= 8:
                              print('\n------------------------------------------------\n------------------------------------------------\n------------------------------------------------\nModel training finished, objective reward over evaluation accomplished.')
                              break
                       else:
-                         write_tofile(total_timesteps,episode_num,eval_reward)
+                         write_tofile(total_timesteps,episode_num,eval_reward,n_solved)
 
                 noise = EXPLORATION_NOISE*np.exp(-episode_num*EXPLORATION_NOISE_DECAY)
                 episode_reward = 0
@@ -387,46 +403,48 @@ def train(agent, test_env, val_env):
             train_iteration+=1
             print('\rTraining: %.2f%%          ' %(timesteps_since_eval/EVAL_FREQUENCY*100),end='')
             train_timesteps = total_timesteps % TRAIN_FREQUENCY
-            agent.train(replay_buffer, train_iteration, BATCH_SIZE, GAMMA, TAU, POLICY_NOISE, NOISE_CLIP, POLICY_FREQUENCY)
-        reward, done = runner.next_step(episode_timesteps, noise)
+            agent.train(REPLAY_BUFFER, train_iteration, BATCH_SIZE, GAMMA, TAU, POLICY_NOISE, NOISE_CLIP, POLICY_FREQUENCY)
+        reward, done = RUNNER.next_step(episode_timesteps, noise)
         episode_reward += reward
-
         train_timesteps += 1
         episode_timesteps += 1
         total_timesteps += 1
         timesteps_since_eval += 1
 
 
-env = DinamicaDrone(TIME_STEP,MAX_ENV_STEPS)
-val_env = DinamicaDrone(TIME_STEP,MAX_ENV_STEPS)
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-mng = plt.get_current_fig_manager()
-mng.window.showMaximized()
+ENV = DinamicaDrone(TIME_STEP, MAX_ENV_STEPS, P_DEBUG)
+EVAL_ENV = DinamicaDrone(TIME_STEP, MAX_ENV_STEPS, P_DEBUG)
+ACTION_DIM = 4
+STATE_DIM = (ENV.estados+ACTION_DIM)*T
+MAX_ACTION = 9
 
 # Set seeds
-env.seed(SEED)
+ENV.seed(SEED)
+EVAL_ENV.seed(SEED)
 torch.manual_seed(SEED)
 np.random.seed(SEED)
 
+# Set default Device
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+#Opens a plot window maximized
+mng = plt.get_current_fig_manager()
+mng.window.showMaximized()
+
+#Load best values from past models
 try:
-    BEST_AVG = read_fromfile()
-    print('Best Reward Loaded: %.2f' %BEST_AVG)
+    BEST_AVG, BEST_SOLVE = read_fromfile()
+    print('Best Reward Loaded: %.2f Best Solve Loaded: %i' %(BEST_AVG,BEST_SOLVE))
 except:
     BEST_AVG = -np.inf
-    print('Could not load best reward, best reward reset')
+    BEST_SOLVE = 0
+    print('Could not load best reward and solution, best reward and solution reset')
 
-action_dim = 4
-state_dim = (env.estados+action_dim)*T
-max_action = 9
 
-policy = TD3(state_dim, action_dim, max_action, env)
-replay_buffer = ReplayBuffer()
-runner = Runner(env, policy, replay_buffer)
-total_timesteps = 0
-timesteps_since_eval = 0
-episode_num = 0
-done = True
-observe(env, replay_buffer)
-observe(env, replay_buffer, policy_env=policy)
-train(policy, env, val_env)
+POLICY = TD3(STATE_DIM, ACTION_DIM, MAX_ACTION, ENV)
+REPLAY_BUFFER = ReplayBuffer()
+RUNNER = Runner(ENV, POLICY, REPLAY_BUFFER)
+observe(ENV, REPLAY_BUFFER)
+observe(ENV, REPLAY_BUFFER, policy_env=POLICY)
+train(POLICY, ENV, EVAL_ENV)

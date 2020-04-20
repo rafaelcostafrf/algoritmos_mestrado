@@ -10,9 +10,12 @@ def read_fromfile():
     File_reward = open('saves/best_reward.txt','r')
     v = float(File_reward.read())
     File_reward.close()
-    return v
+    File_solved = open('saves/best_solved.txt','r')
+    s = float(File_solved.read())
+    File_solved.close()
+    return v, s
 
-def write_tofile(T,epi_num,reward,best=0):
+def write_tofile(T,epi_num,reward,solved,best=0):
     """"
         Writes to a txt file important data of the training process
         Inputs:
@@ -20,11 +23,11 @@ def write_tofile(T,epi_num,reward,best=0):
             epi_num (int): Number of episodes
             reward(float): Average Reward
             best(bool): if best, writes the usual line and overwrites best average on another txt file
-    
+
     """
     now = datetime.datetime.now()
     date = now.strftime("%Y-%m-%d %H:%M")
-    line_values = str(' T: %i Ep. Num: %i Reward: %.4f            \n' %(T,epi_num,reward))
+    line_values = str(' T: %i Ep. Num: %i Reward: %.4f Solved: %i           \n' %(T,epi_num,reward,solved))
     line = date+line_values
     File = open('saves/updates.txt', 'a')
     File.write(line)
@@ -33,12 +36,15 @@ def write_tofile(T,epi_num,reward,best=0):
         File_reward = open('saves/best_reward.txt','w')
         File_reward.write(str(reward))
         File_reward.close()
+        File_solved = open('saves/best_solved.txt','w')
+        File_solved.write(str(solved))
+        File_solved.close()
 
 
 
 def rand_input(len_batch,noise_v,in_prob,numpy=0):
     """"
-        Generates a random predetermined input from a set of actions. 
+        Generates a random predetermined input from a set of actions.
         If the sum of probability in in_prob is lower than 1, the algorithm generates
         a random normal noise input.
         Inputs:
