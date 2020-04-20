@@ -15,8 +15,8 @@ P_DEBUG = 0
 
 #TAXA DE APRENDIZADO DO CRITICO, DO ATOR, TAXA DE TRANSFERENCIA PARA A REDE ALVO E PESO DAS ACOES FUTURAS
 LEARNING_RATE_CRITIC = 0.001
-LEARNING_RATE_ACTOR = 0.0001
-TAU = 0.001
+LEARNING_RATE_ACTOR = 0.001
+TAU = 0.005
 GAMMA = 0.99
 
 #SEMENTE ALEATORIA PARA REPRODUTIBILIDADE
@@ -121,7 +121,7 @@ class TD3(object):
         if noise != 0:
             action = (action + rand_input(1, noise, IN_PROB, numpy=1))
 
-        return action.clip(0, 9)
+        return action.clip(MIN_ACTION, MAX_ACTION)
 
 
     def train(self, replay_buffer, iterations, batch_size, discount, tau, policy_noise, noise_clip, policy_freq):
@@ -154,7 +154,7 @@ class TD3(object):
             # Select action according to policy and add clipped noise
             noise = torch.randn(action.size())*policy_noise
             noise = noise.clamp(-noise_clip, noise_clip)
-            next_action = (self.actor_target(next_state) + noise).clamp(0, self.max_action)
+            next_action = (self.actor_target(next_state) + noise).clamp(MIN_ACTION, MAX_ACTION)
 
             # Compute the target Q value
             target_Q1, target_Q2 = self.critic_target(next_state, next_action)
@@ -282,7 +282,7 @@ def evaluate_policy(policy, env, eval_episodes=10):
         avg_reward = np.mean(rewards)
         var_reward = (np.var(rewards))**(0.5)
         states = np.array(states)
-        actions = np.array(actions)/9
+        actions = np.array(actions)/4
         t = np.arange(0, len(states), 1)*TIME_STEP
 
         plt.cla()
@@ -323,7 +323,7 @@ def observe(env,replay_buffer,policy_env=0):
     while time_steps < observation_steps:
         if policy_env == 0:
             action = np.random.normal(3,6,[4])
-            action = np.clip(action,0,9)
+            action = np.clip(action,MIN_ACTION,MAX_ACTION)
         else:
             action = policy_env.select_action(np.array(obs), EXPLORATION_NOISE)
         new_obs, reward, done = env.passo(action)
@@ -417,7 +417,8 @@ ENV = DinamicaDrone(TIME_STEP, MAX_ENV_STEPS, P_DEBUG)
 EVAL_ENV = DinamicaDrone(TIME_STEP, MAX_ENV_STEPS, P_DEBUG)
 ACTION_DIM = 4
 STATE_DIM = (ENV.estados+ACTION_DIM)*T
-MAX_ACTION = 9
+MIN_ACTION = -4
+MAX_ACTION = 4
 
 # Set seeds
 ENV.seed(SEED)
@@ -437,6 +438,7 @@ try:
     BEST_AVG, BEST_SOLVE = read_fromfile()
     print('Best Reward Loaded: %.2f Best Solve Loaded: %i' %(BEST_AVG,BEST_SOLVE))
 except:
+    EXP_BEFORE_TRAIN=0
     BEST_AVG = -np.inf
     BEST_SOLVE = 0
     print('Could not load best reward and solution, best reward and solution reset')

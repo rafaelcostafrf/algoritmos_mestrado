@@ -8,7 +8,7 @@ from QUATERNION_EULER import Euler2Q, Q2Euler, dQ, Qrot
 M, G = 1.2, 10
 # Constantes do Motor - Empuxo e Momento
 B_T = 1.875e-7
-B_F = 1.875e-8
+B_M = 1.875e-8
 # Momentos de Inercia nos eixos
 J_XX, J_YY, J_ZZ = 8.3e-3, 8.3e-3, 15.5e-3
 # Distancia do motor até o CG
@@ -27,16 +27,18 @@ PESO_DIFF_CONTROLE = 0.5
 PESO_ANG_SHAPE = PESO_ANGULO*2
 PESO_VEL_SHAPE = PESO_VELOCIDADE*0.5
 PESO_CONT_SHAPE = PESO_CONTROLE*0.05
-P_P = 0.2
+P_P = 0.3
 P_V = 1
-P_A = 1
+P_A = 0.1
+P_F = 0.1
+P_C = 0.0001
 
 ##VALOR DE ERRO FINAL##
 E_FINAL = 0.1
 
 ## BOUNDING BOXES
-BB_POS = 300
-BB_VEL = 30
+BB_POS = 5
+BB_VEL = 10
 BB_CONTROLE = 9
 BB_ANG = np.pi/2
 
@@ -65,17 +67,27 @@ class DinamicaDrone():
 
     def seed(self, seed):
         np.random.seed(seed)
-
+    
+    def FM_2_W(self,F,M):
+        w = 1        
+        return w
+        
+        
+    
     def eq_drone(self, t, x, entrada):
-        f1 = entrada[0]
-        f2 = entrada[1]
-        f3 = entrada[2]
-        f4 = entrada[3]
+        f_in= entrada[0]+12
+        m_in = entrada[1:4]
+        # w = self.FM_2_W(F,M)
+        
+        # f1 = B_T[0]*w[0]**2
+        # f2 = B_T[1]*w[1]**2
+        # f3 = B_T[2]*w[2]**2
+        # f4 = B_T[3]*w[3]**2
 
-        m1 = B_F/B_T*f1
-        m2 = B_F/B_T*f2
-        m3 = B_F/B_T*f3
-        m4 = B_F/B_T*f4
+        # m1 = B_M[0]*w[0]**2
+        # m2 = B_M[1]*w[1]**2
+        # m3 = B_M[2]*w[2]**2
+        # m4 = B_M[3]*w[3]**2
 
         q0 = x[6]
         q1 = x[7]
@@ -85,12 +97,12 @@ class DinamicaDrone():
         q = np.array([[q0, q1, q2, q3]]).T
         q = q/np.linalg.norm(q)
 
-        F = np.array([[0, 0, (f1 + f2 + f3 + f4)]]).T
+        F = np.array([[0, 0, f_in]]).T
         self.F_VEC = np.dot(Qrot(q), F)
 
-        accel_w_xx = (f1-f3)*D/J_XX
-        accel_w_yy = (f2-f4)*D/J_YY
-        accel_w_zz = (m1+m3-m2-m4)/J_ZZ
+        accel_w_xx = m_in[0]/J_XX
+        accel_w_yy = m_in[1]/J_YY
+        accel_w_zz = m_in[2]/J_ZZ
 
         W = np.array([[x[10]],
                       [x[11]],
@@ -127,11 +139,11 @@ class DinamicaDrone():
         
         self.ang = np.random.rand(3)-0.5
         Q_in = Euler2Q(self.ang[0], self.ang[1], self.ang[2])
-        self.y_0[0:6] = (np.random.rand(6)-0.5)*10
+        self.y_0[0:6] = (np.random.rand(6)-0.5)*BB_POS
         self.y_0[6:10]=Q_in.T
-        self.y_0[10:14] = (np.random.rand(3)-0.5)*2
-        self.entrada = np.ones(4)*3
-        
+        self.y_0[10:14] = (np.random.rand(3)-0.5)*1
+        self.entrada = np.zeros(4)
+        self.entrada[0] = 12        
         self.entrada_agente = np.zeros(T*self.tam_his)
         self.entrada_agente = np.roll(self.entrada_agente, -self.estados)
         self.entrada_agente[-self.tam_his:] = np.concatenate((self.y_0, self.entrada))
@@ -145,7 +157,7 @@ class DinamicaDrone():
         self.i += 1
         self.entrada_anterior = self.entrada
         self.entrada = acao
-        self.saida = (integrate.solve_ivp(self.eq_drone, (0, self.passo_t), self.y_0, args=[self.entrada]))
+        self.saida = integrate.solve_ivp(self.eq_drone, (0, self.passo_t), self.y_0, args=(self.entrada,))
         self.saida = self.saida.y
         self.y = np.transpose(self.saida[:, -1])
         q = np.array([self.y[6:10]]).T
@@ -184,11 +196,11 @@ class DinamicaDrone():
 
 
 
-        P_T_X = -((target_FX-self.F_VEC[0])/6)**2*PESO_CONTROLE
-        P_T_Y = -((target_FY-self.F_VEC[1])/6)**2*PESO_CONTROLE
-        P_T_Z = -((target_FZ-self.F_VEC[2])/6)**2*PESO_CONTROLE
+        P_T_X = -((target_FX-self.F_VEC[0])/6)**2*P_F
+        P_T_Y = -((target_FY-self.F_VEC[1])/6)**2*P_F
+        P_T_Z = -((target_FZ-self.F_VEC[2])/6)**2*P_F
 
-        P_CONTROLE = -np.sum(np.square(self.entrada-np.ones(4)*3))*0.1
+        P_CONTROLE = -np.sum(np.square(self.entrada))*P_C
         
         p_target = P_T_X+P_T_Y+P_T_Z
 
@@ -211,9 +223,10 @@ class DinamicaDrone():
         if debug:
             print('\n---Debug---')
             print('Posicao Atual: ' +str(self.y[0:5:2]))
-            print('Alvo de Velocidade: ' + str([target_v_x, target_v_y, ]))
+            print('Alvo de Velocidade: ' + str([target_v_x, target_v_y, target_v_z]))
             print('Velocidade: '+ str(self.y[1:6:2]))
             print('Alvo de Força: '+str([target_FX, target_FY, target_FZ]))
             print('Força: '+str(self.F_VEC))
-            print('TOTAL: %.2f P Direçao: %.2f%% P FX: %.2f%% P FY: %.2f%% P FZ: %.2f%%' %(pontos, p_p/pontos*100, P_T_X/pontos*100, P_T_Y/pontos*100, P_T_Z/pontos*100))
+            print('Entrada: '+str(self.entrada))
+            print('TOTAL: %.2f P Direçao: %.2f%% P FX: %.2f%% P FY: %.2f%% P FZ: %.2f%% Cont: %.2f%%' %(pontos, p_p/pontos*100, P_T_X/pontos*100, P_T_Y/pontos*100, P_T_Z/pontos*100, P_CONTROLE/pontos*100))
             print('---Fim Debug---')
