@@ -42,18 +42,18 @@ TRAIN_FREQUENCY = 1
 POLICY_FREQUENCY = 2
 
 #RUÍDO DE EXPLORACÃO E RUIDO NA POLITICA NO TREINAMENTO
-EXPLORATION_NOISE = 0.45
-POLICY_NOISE = 0.9
-NOISE_CLIP = 4.5
+EXPLORATION_NOISE = 0.1
+POLICY_NOISE = 0.2
+NOISE_CLIP = .6
 
 #TAXA DE DECAIMENTO EXPONENCIAL DO RUIDO
 EXPLORATION_NOISE_DECAY = 0
 
 #CLIP DE RUIDO (SE NECESSARIO) E PROBABILIDADE DE ENTRADAS PRE DETERMINADAS
-PROB_Z = 0.1
-PROB_PHI = 0.05
-PROB_THETA = 0.05
-PROB_PSI = 0.05
+PROB_Z = 0
+PROB_PHI = 0
+PROB_THETA = 0
+PROB_PSI = 0
 IN_PROB=np.array([PROB_Z,
                   PROB_Z+PROB_PHI,
                   PROB_Z+PROB_PHI+PROB_THETA,
@@ -65,9 +65,9 @@ REWARD_THRESH = np.inf
 #PASSO DA SIMULACAO, PASSOS MAXIMOS DO SISTEMA E FREQUENCIA DE VALIDACAO
 TIME_STEP = 0.01
 MAX_ENV_STEPS = 1000
-EVAL_FREQUENCY = 5000
+EVAL_FREQUENCY = 20000
 
-T = 2
+T = 5
 
 #ALGORITMO TD3 BASEADO EM https://gist.github.com/djbyrne/d58aa1abfe0a14e68686b2c514120d49#file-td3-ipynb
 #CORRECOES IMPORTANTES FORAM FEITAS, TAMBÉM FORAM FEITAS ADAPTACOES PARA O AMBIENTE DO QUADROTOR
@@ -152,7 +152,7 @@ class TD3(object):
 
         with torch.no_grad():
             # Select action according to policy and add clipped noise
-            noise = torch.randn(action.size())*policy_noise
+            noise = (torch.randn(action.size())*policy_noise).to(device)
             noise = noise.clamp(-noise_clip, noise_clip)
             next_action = (self.actor_target(next_state) + noise).clamp(MIN_ACTION, MAX_ACTION)
 
@@ -265,7 +265,7 @@ def evaluate_policy(policy, env, eval_episodes=10):
                 if i == eval_episodes-1:
                     q = np.array([env.y_0[6:10]]).T
                     phi,theta,psi = Q2Euler(q)
-                    ang = np.array([phi,theta,psi])
+                    ang = np.array([phi,theta,np.sin(psi/2)])
                     state_conv = np.concatenate((env.y_0[0:6], ang))
                     states.append(state_conv)
                     actions.append(action)
@@ -274,15 +274,14 @@ def evaluate_policy(policy, env, eval_episodes=10):
                 reward_i += reward
                 eval_steps += 1
                 if resolvido:
-                    print('\rEvaluation episode %i solved successfully' %i)
+                    n_solved += env.resolvido
                     env.reset=True
                     break
             rewards.append(reward_i)
-            n_solved += env.resolvido
         avg_reward = np.mean(rewards)
         var_reward = (np.var(rewards))**(0.5)
         states = np.array(states)
-        actions = np.array(actions)/4
+        actions = np.array(actions)
         t = np.arange(0, len(states), 1)*TIME_STEP
 
         plt.cla()
@@ -300,7 +299,7 @@ def evaluate_policy(policy, env, eval_episodes=10):
         plt.draw()
         plt.title(avg_reward)
         plt.pause(1)
-    return avg_reward, var_reward, n_solved
+    return avg_reward/eval_steps, var_reward/eval_steps, n_solved/eval_episodes
 
 def observe(env,replay_buffer,policy_env=0):
     """run episodes while taking random actions and filling replay_buffer
@@ -322,7 +321,7 @@ def observe(env,replay_buffer,policy_env=0):
 
     while time_steps < observation_steps:
         if policy_env == 0:
-            action = np.random.normal(3,6,[4])
+            action = np.random.normal(0,MAX_ACTION/2,[4])
             action = np.clip(action,MIN_ACTION,MAX_ACTION)
         else:
             action = policy_env.select_action(np.array(obs), EXPLORATION_NOISE)
@@ -362,6 +361,8 @@ def train(agent, test_env, val_env):
     episode_timesteps = 0
     train_timesteps = 0
     train_iteration = 0
+    eval_episodes = 10
+    eval_episodes_check = 100
     done = False
     evaluations = []
     best_avg = BEST_AVG
@@ -374,24 +375,29 @@ def train(agent, test_env, val_env):
                 #Evaluate episode
                 if timesteps_since_eval >= EVAL_FREQUENCY:
                       timesteps_since_eval %= EVAL_FREQUENCY
-                      eval_reward, var_reward, n_solved = evaluate_policy(agent, val_env)
+                      eval_reward, var_reward, n_solved = evaluate_policy(agent, val_env, eval_episodes)
                       evaluations.append(eval_reward)
-                      print("\rTotal T: {:d} Episode Num: {:d} Total Reward: {:.2f}±{:.2f} Avg Reward: {:.2f} Exploration: {:.2f} Solved: {:d} \n".format(
+                      print("\rTotal T: {:d} Episode Num: {:d} Total Reward: {:.2f}±{:.2f} Avg Reward: {:.2f} Exploration: {:.2f} Solved: {:.3f} \n".format(
                         total_timesteps, episode_num, eval_reward,var_reward, np.mean(evaluations[-N_MEAN:]), noise, n_solved), end="")
                       sys.stdout.flush()
-                      if best_avg < eval_reward or n_solved > best_n_solved:
-                         if n_solved:
-                             best_avg = np.inf
-                         else:
-                             best_avg = eval_reward
-                         best_n_solved = n_solved
-                         write_tofile(total_timesteps,episode_num,eval_reward,n_solved,1)
-
-                         print("\n------------------\nSaving best model\n------------------\n")
-                         agent.save("best_avg","saves")
-                         if n_solved >= 8:
-                             print('\n------------------------------------------------\n------------------------------------------------\n------------------------------------------------\nModel training finished, objective reward over evaluation accomplished.')
-                             break
+                      if eval_reward > best_avg*0.85 or n_solved > best_n_solved*0.85:
+                         #IF PRELIMINAR IS BETTER, EVALUATE AGAIN WITH MORE EPISODES#
+                         eval_reward, var_reward, n_solved = evaluate_policy(agent, val_env, eval_episodes_check) 
+                         print("\r ------ SECOND EVALUATION ----- Total Reward: {:.2f}±{:.2f} Avg Reward: {:.2f} Exploration: {:.2f} Solved: {:.3f} \n".format(
+                             eval_reward,var_reward, np.mean(evaluations[-N_MEAN:]), noise, n_solved), end="")
+                         if eval_reward > best_avg or n_solved > best_n_solved:
+                             if n_solved:
+                                 best_avg = 1e10
+                             else:
+                                 best_avg = eval_reward
+                             best_n_solved = n_solved
+                             write_tofile(total_timesteps,episode_num,best_avg,n_solved,1)
+    
+                             print("\n------------------\nSaving best model\n------------------\n")
+                             agent.save("best_avg","saves")
+                             if n_solved >= 0.95:
+                                 print('\n------------------------------------------------\n------------------------------------------------\n------------------------------------------------\nModel training finished, objective reward over evaluation accomplished.')
+                                 break
                       else:
                          write_tofile(total_timesteps,episode_num,eval_reward,n_solved)
 
@@ -413,12 +419,12 @@ def train(agent, test_env, val_env):
 
 
 
-ENV = DinamicaDrone(TIME_STEP, MAX_ENV_STEPS, P_DEBUG)
-EVAL_ENV = DinamicaDrone(TIME_STEP, MAX_ENV_STEPS, P_DEBUG)
+ENV = DinamicaDrone(TIME_STEP, MAX_ENV_STEPS, T, P_DEBUG)
+EVAL_ENV = DinamicaDrone(TIME_STEP, MAX_ENV_STEPS, T, P_DEBUG)
 ACTION_DIM = 4
 STATE_DIM = (ENV.estados+ACTION_DIM)*T
-MIN_ACTION = -4
-MAX_ACTION = 4
+MIN_ACTION = -1
+MAX_ACTION = 1
 
 # Set seeds
 ENV.seed(SEED)
@@ -436,7 +442,7 @@ mng.window.showMaximized()
 #Load best values from past models
 try:
     BEST_AVG, BEST_SOLVE = read_fromfile()
-    print('Best Reward Loaded: %.2f Best Solve Loaded: %i' %(BEST_AVG,BEST_SOLVE))
+    print('Best Reward Loaded: %.2f Best Solve Loaded: %.3f' %(BEST_AVG,BEST_SOLVE))
 except:
     EXP_BEFORE_TRAIN=0
     BEST_AVG = -np.inf

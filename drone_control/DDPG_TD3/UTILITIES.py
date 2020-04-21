@@ -27,7 +27,7 @@ def write_tofile(T,epi_num,reward,solved,best=0):
     """
     now = datetime.datetime.now()
     date = now.strftime("%Y-%m-%d %H:%M")
-    line_values = str(' T: %i Ep. Num: %i Reward: %.4f Solved: %i           \n' %(T,epi_num,reward,solved))
+    line_values = str(' T: %i Ep. Num: %i Reward: %.4f Solved: %.3f           \n' %(T,epi_num,reward,solved))
     line = date+line_values
     File = open('saves/updates.txt', 'a')
     File.write(line)
@@ -54,10 +54,10 @@ def rand_input(len_batch,noise_v,in_prob,numpy=0):
             numpy(bool): if numpy, returns the noise converted to numpy, else return the noise converted to torch
     """
     noise=np.zeros([len_batch,4])
-    in_up = np.array([1,1,1,1])
-    in_x_roll = np.array([1,0,-1,0])
-    in_y_roll = np.array([0,1,0,-1])
-    in_z_roll = np.array([1,-1,1,-1])
+    in_up = np.array([1,0,0,0])
+    in_x_roll = np.array([0,1,0,0])
+    in_y_roll = np.array([0,0,1,0])
+    in_z_roll = np.array([0,0,0,1])
     for i, _ in enumerate(noise):
         prob = np.random.random()
         noise_n = np.random.randn()*noise_v
