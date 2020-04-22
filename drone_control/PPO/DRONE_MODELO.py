@@ -2,7 +2,7 @@ from scipy import integrate
 import numpy as np
 from QUATERNION_EULER import Euler2Q, Q2Euler, dQ, Qrot
 from collections import deque
-
+from numpy.linalg import norm
 ## PARAMETROS DO QUADROTOR ##
 
 # Massa e Gravidade
@@ -31,11 +31,11 @@ PESO_CONT_SHAPE = PESO_CONTROLE*0.05
 
 P_P = 1
 P_A = 0.3
-P_C = 0.5
-P_C_D = 0.3
+P_C = 0.05
+P_C_D = 0.1
 
 ##VALOR DE ERRO FINAL##
-E_FINAL = 0.1
+E_FINAL = 0.01
 
 ## BOUNDING BOXES
 BB_POS = 5
@@ -54,8 +54,7 @@ class DinamicaDrone():
                                  BB_POS, BB_VEL,
                                  BB_POS, BB_VEL,
                                  BB_ANG, BB_ANG, 4,
-                                 BB_VEL, BB_VEL, BB_VEL,
-                                 n_max])
+                                 BB_VEL, BB_VEL, BB_VEL])
         self.entrada_hist = deque(maxlen=self.t)
         self.estados = 13
         self.y_0 = np.zeros(self.estados)
@@ -138,7 +137,7 @@ class DinamicaDrone():
         self.resolvido = 0
         self.reset = False
         self.i = 0
-        
+        self.shaping_anterior = 0
         self.ang = np.random.rand(3)-0.5
         Q_in = Euler2Q(self.ang[0], self.ang[1], self.ang[2])
         self.y_0[0:6] = (np.random.rand(6)-0.5)*BB_POS
@@ -175,67 +174,68 @@ class DinamicaDrone():
         return self.entrada_agente, self.pontos, self.reset
 
     def reset_fun(self):
-        cond_x = np.concatenate((self.y[0:6], self.ang, self.y[-3:], np.array([self.i])))
+        cond_x = np.concatenate((self.y[0:6], self.ang, self.y[-3:]))
         for x, c in zip(np.abs(cond_x), self.cond_bb):
             if  x >= c:
                 self.reset = True
 
 
+
     def pontos_fun(self, debug=0):
-        estado_atual=np.array([self.y[0], self.y[2], self.y[4], self.ang[2]])
-        estado_anterior=np.array([self.y_0[0], self.y_0[2], self.y_0[4], self.ang_ant[2]])
+        self.pontos = 0
         
-        ## REWARD SHAPING ##
-        p_p = (np.linalg.norm(estado_anterior)-np.linalg.norm(estado_atual))*10
-        p_a = 0
-        #POSICAO
-        # p_p = np.exp(-np.square(np.linalg.norm(self.y[0:5:2]))*P_P)
-        #ANGULO
-        # p_a = np.exp(-np.square(np.sin(self.ang[2]/2))*P_A)
+        shaping = 100*(-norm(self.y[0:5:2]/BB_POS)-norm(self.y[1:6:2]/BB_VEL)-abs(self.ang[2]/4))
         
+        if self.y[0] < E_FINAL:
+            shaping += 3
+            if self.y[1] < E_FINAL:
+                shaping += 3
+        if self.y[2] < E_FINAL:
+            shaping += 3
+            if self.y[1] < E_FINAL:
+                shaping += 3
+        if self.y[4] < E_FINAL:
+            shaping += 3
+            if self.y[1] < E_FINAL:
+                shaping += 3
+        if self.ang[2] < E_FINAL:
+            shaping += 3
+            if self.y[-1] < E_FINAL:
+                shaping += 3
+           
+        if self.shaping_anterior is not None:
+            self.pontos = shaping - self.shaping_anterior    
+       
         #PENALIDADE CONTROLE ABSOLUTO
-        P_CONTROLE = -np.sum(np.square(self.entrada))*P_C
+        P_CONTROLE = -np.sum(np.square(self.entrada)) * P_C
         #PENALIDADE CONTROLE FORA DA MEDIA
-        P_CONTROLE_D = -np.sum(np.square(self.entrada-np.mean(self.entrada_hist,0)))*P_C_D
+        P_CONTROLE_D = -np.sum(np.square(self.entrada - np.mean(self.entrada_hist, 0))) * P_C_D
         
         ## SOMA DOS PONTOS ##
-        pontos = p_p + P_CONTROLE + P_CONTROLE_D #+p_a
+        self.pontos += + P_CONTROLE + P_CONTROLE_D
 
         #TESTE DE SOLUCAO
-        est_final_parcial = 3*(E_FINAL**2)
         est_final = 12*(E_FINAL**2)
-        est_teste = np.sum(np.square(np.concatenate((self.y[0:6],self.y[-3:],self.ang[0:2],[np.sin(self.ang[2]/2)]))))
+        est_teste = np.sum(np.square(np.concatenate((self.y[0:6], self.y[-3:], self.ang))))      
         
-        #ERRO DE POSICAO ABAIXO DA TOLERANCIA
-        if np.sum(np.square(self.y[0:5:2])) < est_final_parcial:
-            pontos += 1
-
-            #ERRO DE VELOCIDADE ABAIXO DA TOLERANCIA
-            if np.sum(np.square(self.y[1:6:2])) < est_final_parcial:
-                pontos += 0.2
-            
-            #ERRO DE ANGULO ABAIXO DA TOLERANCIA
-            if np.sum(np.square(self.ang[0:2])) < est_final_parcial:
-                pontos += 0.2   
-                
-            #ERRO PSI ABAIXO DA TOLERANCIA
-            if np.sin(self.ang[2]/2)**2 < E_FINAL**2:
-                pontos += 0.2
-        
-        if est_teste < est_final:
-            pontos += 1
+        if est_teste<est_final:
+            self.pontos = +200
             self.resolvido = 1
-
-        if self.reset:
-            self.pontos = pontos - 5
-        else:
-            self.pontos = pontos
-        if debug:
+            self.reset = True 
+        elif self.i >= self.n_max:
+            self.pontos = self.pontos
+            self.reset = True
+            self.resolvido = 0
+        elif self.reset:
+            self.pontos = -200
+            
+        if debug and self.i%debug==0:
             print('\n---Debug---')
             print('Posicao Atual: ' +str(self.y[0:5:2]))
-            print('Psi Atual: %.2f Ponto: %.2f' %(self.ang[2],p_a))
+            print('Psi Atual: %.2f' %(self.ang[2]))
             print('Velocidade: '+ str(self.y[1:6:2]))
             print('Força: '+str(self.F_VEC))
             print('Entrada: '+str(self.entrada))
-            print('TOTAL: %.2f Direçao: %.2f%% Psi: %.2f%% Cont: %.2f%% D Cont: %.2f%%' %(pontos, p_p/pontos*100, p_a/pontos*100, P_CONTROLE/pontos*100, P_CONTROLE_D/pontos*100))
+            print('TOTAL: %.2f Shap Anterior: %.2f Shaping: %.2f Cont: %.2f D Cont: %.2f' %(self.pontos, self.shaping_anterior, shaping, P_CONTROLE, P_CONTROLE_D))
             print('---Fim Debug---')
+        self.shaping_anterior = shaping

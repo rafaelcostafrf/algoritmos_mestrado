@@ -299,7 +299,7 @@ def evaluate_policy(policy, env, eval_episodes=10):
         plt.draw()
         plt.title(avg_reward)
         plt.pause(1)
-    return avg_reward/eval_steps, var_reward/eval_steps, n_solved/eval_episodes
+    return avg_reward, var_reward, n_solved/eval_episodes
 
 def observe(env,replay_buffer,policy_env=0):
     """run episodes while taking random actions and filling replay_buffer
