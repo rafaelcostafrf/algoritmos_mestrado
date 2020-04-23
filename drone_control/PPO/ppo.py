@@ -24,23 +24,25 @@ class Memory:
 
 class ActorCritic(nn.Module):
     def __init__(self, state_dim, action_dim, action_std):
+        h1=64
+        h2=64
         super(ActorCritic, self).__init__()
         # action mean range -1 to 1
         self.actor =  nn.Sequential(
-                nn.Linear(state_dim, 400),
+                nn.Linear(state_dim, h1),
                 nn.Tanh(),
-                nn.Linear(400, 300),
+                nn.Linear(h1, h2),
                 nn.Tanh(),
-                nn.Linear(300, action_dim),
+                nn.Linear(h2, action_dim),
                 nn.Tanh()
                 )
         # critic
         self.critic = nn.Sequential(
-                nn.Linear(state_dim, 400),
+                nn.Linear(state_dim, h1),
                 nn.Tanh(),
-                nn.Linear(400, 300),
+                nn.Linear(h1, h2),
                 nn.Tanh(),
-                nn.Linear(300, 1)
+                nn.Linear(h2, 1)
                 )
         self.action_var = torch.full((action_dim,), action_std*action_std).to(device)
         
@@ -138,7 +140,7 @@ class PPO:
 
 
 
-def evaluate(env,agent,plotter,memory,eval_steps=10):
+def evaluate(env,agent,plotter,eval_steps=10):
     n_solved = 0
     rewards = 0
     for i in range(eval_steps):
@@ -146,7 +148,7 @@ def evaluate(env,agent,plotter,memory,eval_steps=10):
         plotter.clear()
         done = False
         while True:
-            action = agent.policy.actor(torch.FloatTensor(state)).cpu().detach().numpy()
+            action = agent.policy.actor(torch.FloatTensor(state).to(device)).cpu().detach().numpy()
             state, reward, done = env.passo(action)
             rewards += reward
             if i == eval_steps-1:
@@ -160,6 +162,31 @@ def evaluate(env,agent,plotter,memory,eval_steps=10):
     plotter.plot()
     return reward_mean, solved_mean
 
+
+def evaluate_step(env,agent,plotter,eval_steps=1):
+    n_solved = 0
+    rewards = 0
+    for i in range(eval_steps):
+        state = env.inicial(step=1)
+        plotter.clear()
+        done = False
+        while True:
+            action = agent.policy.actor(torch.FloatTensor(state).to(device)).cpu().detach().numpy()
+            state, reward, done = env.passo(action)
+            rewards += reward
+            if i == eval_steps-1:
+                plot_state = np.concatenate((env.y[0:5:2],env.ang,action))
+                plotter.add(env.i*0.01,plot_state)
+            if done:
+                n_solved += env.resolvido
+                break
+    solved_mean = n_solved/eval_steps        
+    reward_mean = rewards/eval_steps
+    plotter.plot()
+    return reward_mean, solved_mean
+    
+
+
 t_since_last_plot = 0
 T = 5
 # creating environment
@@ -169,20 +196,20 @@ DEBUG = 0
 
 action_dim = 4
 random_seed = 0
-lr = 0.0003
+lr = 0.0001
 log_interval = 100
 max_episodes = 100000
 max_timesteps = 1000
 time_int_step = 0.01
-update_timestep = 1000
+update_timestep = 4000
 solved_reward = 700
-action_std = 0.5
+action_std = 0.3
 K_epochs = 80
 eps_clip = 0.2
 gamma = 0.99
 betas = (0.9, 0.999)
 
-solved_avg = 0
+
 
 
 env = DinamicaDrone(time_int_step, max_timesteps, T, DEBUG)
@@ -206,6 +233,9 @@ print(lr,betas)
 running_reward = 0
 avg_length = 0
 time_step = 0
+solved_avg = 0
+
+
 
 # training loop
 for i_episode in range(1, max_episodes+1):

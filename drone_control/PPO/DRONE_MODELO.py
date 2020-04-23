@@ -32,10 +32,14 @@ PESO_CONT_SHAPE = PESO_CONTROLE*0.05
 P_P = 1
 P_A = 0.3
 P_C = 0.1
-P_C_D = 0.3
+P_C_D = 0.5
+
+
+
 
 ##VALOR DE ERRO FINAL##
-E_FINAL = 0.01
+TR = [0.01,0.05,0.1]
+TR_P = [40,20,10]
 
 ## BOUNDING BOXES
 BB_POS = 5
@@ -133,16 +137,23 @@ class DinamicaDrone():
                          dq0, dq1, dq2, dq3,
                          accel_w_xx, accel_w_yy, accel_w_zz])
 
-    def inicial(self):
+    def inicial(self,step=0):
         self.resolvido = 0
         self.reset = False
         self.i = 0
-        self.shaping_anterior = 0
+        self.shaping_anterior = None
         self.ang = np.random.rand(3)-0.5
         Q_in = Euler2Q(self.ang[0], self.ang[1], self.ang[2])
-        self.y_0[0:6] = (np.random.rand(6)-0.5)*BB_POS
-        self.y_0[6:10]=Q_in.T
-        self.y_0[10:14] = (np.random.rand(3)-0.5)*1
+        if step:
+            self.y_0 = np.zeros(13)
+            self.y_0[6] = 1
+            self.y_0[0] = -4
+            self.y_0[2] = -4
+            self.y_0[4] = -4
+        else:
+            self.y_0[0:6] = (np.random.rand(6)-0.5)*BB_POS
+            self.y_0[6:10] = Q_in.T
+            self.y_0[10:14] = (np.random.rand(3)-0.5)*1
         self.entrada = np.zeros(4) 
         self.entrada_hist.append(self.entrada)
         self.entrada_agente = np.zeros(self.t*self.tam_his)
@@ -156,7 +167,7 @@ class DinamicaDrone():
         if self.reset:
             print('\n\nCuidado, voce está chamando env.passo() com a flag RESET ativada. Chame env.inicial() para resetar o sistema.\n\n')
         self.i += 1
-        self.entrada = acao
+        self.entrada = np.clip(acao,-1,1)
         self.entrada_hist.append(self.entrada)
         self.saida = integrate.solve_ivp(self.eq_drone, (0, self.passo_t), self.y_0, args=(self.entrada,))
         self.saida = self.saida.y
@@ -183,57 +194,55 @@ class DinamicaDrone():
 
     def pontos_fun(self, debug=0):
         self.pontos = 0
+        shaping = 100*(-norm(self.y[0:5:2]/BB_POS) - norm(self.y[1:6:2]/BB_VEL) - abs(self.ang[2]/4))
         
-        shaping = 100*(-norm(self.y[0:5:2]/BB_POS)-norm(self.y[1:6:2]/BB_VEL)-abs(self.ang[2]/4))
+        #CASCATA DE PONTOS
+        r_state = np.concatenate((self.y[0:5:2],[self.ang[2]]))
         
-        if self.y[0] < E_FINAL:
-            shaping += 3
-            if self.y[1] < E_FINAL:
-                shaping += 3
-        if self.y[2] < E_FINAL:
-            shaping += 3
-            if self.y[1] < E_FINAL:
-                shaping += 3
-        if self.y[4] < E_FINAL:
-            shaping += 3
-            if self.y[1] < E_FINAL:
-                shaping += 3
-        if self.ang[2] < E_FINAL:
-            shaping += 3
-            if self.y[-1] < E_FINAL:
-                shaping += 3
-           
+        #DO FINAL PRO INICIAL PARA NAO DAR PONTOS A MAIS
+        for TR_i,TR_Pi in zip(TR,TR_P): 
+            if norm(r_state) < norm(np.ones(len(r_state))*TR_i):
+                shaping += TR_Pi
+                if norm(self.ang) < norm(np.ones(3)*TR_i*2):
+                    shaping += TR_Pi
+                if norm(self.y[1:6:2]) < norm(np.ones(3)*TR_i):
+                    shaping += TR_Pi
+                break
+        
         if self.shaping_anterior is not None:
             self.pontos = shaping - self.shaping_anterior    
        
         #PENALIDADE CONTROLE ABSOLUTO
         P_CONTROLE = -np.sum(np.square(self.entrada)) * P_C
         #PENALIDADE CONTROLE FORA DA MEDIA
-        P_CONTROLE_D = -np.sum(np.square(self.entrada - np.mean(self.entrada_hist, 0))) * P_C_D
+        
+
+
+        
+        P_CONTROLE_D = -np.sum(np.square(self.entrada - np.mean(self.entrada_hist,0))) * P_C_D
         
         ## SOMA DOS PONTOS ##
         self.pontos += + P_CONTROLE + P_CONTROLE_D
-
         #TESTE DE SOLUCAO
-        est_final = 12*(E_FINAL**2)
+        est_final = 12*(TR[0]**2)
         est_teste = np.sum(np.square(np.concatenate((self.y[0:6], self.y[-3:], self.ang))))      
         
         if est_teste<est_final:
-            self.pontos = +200
+            self.pontos = +500
             self.resolvido = 1
             self.reset = True 
-        elif self.i >= self.n_max:
+        elif self.i >= self.n_max and not self.reset:
             self.pontos = self.pontos
             self.reset = True
             self.resolvido = 0
         elif self.reset:
             self.pontos = -200
             
-        if debug and self.i%debug==0:
+        if debug and self.i%debug==0 and self.shaping_anterior is not None:
             print('\n---Debug---')
             print('Posicao Atual: ' +str(self.y[0:5:2]))
-            print('Angulos Atual: ' +str(self.ang))
             print('Velocidade: '+ str(self.y[1:6:2]))
+            print('Angulos Atual: ' +str(self.ang))
             print('V Ang At: ' + str(self.y[-3:]))
             print('Entrada: '+str(self.entrada))
             print('Iteração: ' + str(self.i))
