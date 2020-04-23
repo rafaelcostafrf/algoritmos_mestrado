@@ -172,15 +172,15 @@ random_seed = 0
 lr = 0.0003
 log_interval = 100
 max_episodes = 100000
-max_timesteps = 5000
+max_timesteps = 1000
 time_int_step = 0.01
-update_timestep = 4000
+update_timestep = 1000
 solved_reward = 700
 action_std = 0.5
 K_epochs = 80
 eps_clip = 0.2
 gamma = 0.99
-betas = (0.9, 0.9999)
+betas = (0.9, 0.999)
 
 solved_avg = 0
 

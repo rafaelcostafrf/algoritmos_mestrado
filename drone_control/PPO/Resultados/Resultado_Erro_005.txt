@@ -1,0 +1,22 @@
+0.0001 (0.9, 0.999)
+Episode 100      Avg length: 75          Avg reward: -254.04     Solved: 0.00
+Episode 200      Avg length: 71          Avg reward: -238.09     Solved: 0.00
+Episode 300      Avg length: 75          Avg reward: -277.78     Solved: 0.00
+Episode 400      Avg length: 79          Avg reward: -259.72     Solved: 0.00
+Episode 500      Avg length: 82          Avg reward: -273.46     Solved: 0.00
+Episode 600      Avg length: 83          Avg reward: -258.12     Solved: 0.00
+Episode 700      Avg length: 94          Avg reward: -296.02     Solved: 0.00
+Episode 800      Avg length: 96          Avg reward: -253.16     Solved: 0.00
+Episode 900      Avg length: 99          Avg reward: -259.31     Solved: 0.00
+Episode 1000     Avg length: 112         Avg reward: -304.20     Solved: 0.00
+Episode 1100     Avg length: 123         Avg reward: -276.99     Solved: 0.00
+Episode 1200     Avg length: 139         Avg reward: -290.06     Solved: 0.00
+Episode 1300     Avg length: 151         Avg reward: -288.06     Solved: 0.00
+Episode 1400     Avg length: 171         Avg reward: -311.94     Solved: 0.00
+Episode 1500     Avg length: 194         Avg reward: -321.21     Solved: 0.00
+Episode 1600     Avg length: 279         Avg reward: -273.81     Solved: 0.00
+Episode 1700     Avg length: 555         Avg reward: -55.70      Solved: 0.00
+Episode 1800     Avg length: 871         Avg reward: 18.53       Solved: 0.00
+Episode 1900     Avg length: 925         Avg reward: 28.82       Solved: 0.00
+Episode 2000     Avg length: 900         Avg reward: 599.22      Solved: 1.00
+########## Solved! ##########

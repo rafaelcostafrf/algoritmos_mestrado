@@ -31,8 +31,8 @@ PESO_CONT_SHAPE = PESO_CONTROLE*0.05
 
 P_P = 1
 P_A = 0.3
-P_C = 0.05
-P_C_D = 0.1
+P_C = 0.1
+P_C_D = 0.3
 
 ##VALOR DE ERRO FINAL##
 E_FINAL = 0.01
@@ -232,10 +232,11 @@ class DinamicaDrone():
         if debug and self.i%debug==0:
             print('\n---Debug---')
             print('Posicao Atual: ' +str(self.y[0:5:2]))
-            print('Psi Atual: %.2f' %(self.ang[2]))
+            print('Angulos Atual: ' +str(self.ang))
             print('Velocidade: '+ str(self.y[1:6:2]))
-            print('Força: '+str(self.F_VEC))
+            print('V Ang At: ' + str(self.y[-3:]))
             print('Entrada: '+str(self.entrada))
+            print('Iteração: ' + str(self.i))
             print('TOTAL: %.2f Shap Anterior: %.2f Shaping: %.2f Cont: %.2f D Cont: %.2f' %(self.pontos, self.shaping_anterior, shaping, P_CONTROLE, P_CONTROLE_D))
             print('---Fim Debug---')
         self.shaping_anterior = shaping

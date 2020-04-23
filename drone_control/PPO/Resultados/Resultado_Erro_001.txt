@@ -1,0 +1,30 @@
+0.0001 (0.9, 0.999)
+Episode 100      Avg length: 70          Avg reward: -245.00     Solved: 0.00
+Episode 200      Avg length: 76          Avg reward: -267.53     Solved: 0.00
+Episode 300      Avg length: 74          Avg reward: -295.87     Solved: 0.00
+Episode 400      Avg length: 85          Avg reward: -283.17     Solved: 0.00
+Episode 500      Avg length: 90          Avg reward: -251.61     Solved: 0.00
+Episode 600      Avg length: 87          Avg reward: -273.62     Solved: 0.00
+Episode 700      Avg length: 89          Avg reward: -282.95     Solved: 0.00
+Episode 800      Avg length: 88          Avg reward: -306.97     Solved: 0.00
+Episode 900      Avg length: 91          Avg reward: -264.82     Solved: 0.00
+Episode 1000     Avg length: 96          Avg reward: -263.74     Solved: 0.00
+Episode 1100     Avg length: 100         Avg reward: -287.34     Solved: 0.00
+Episode 1200     Avg length: 106         Avg reward: -270.59     Solved: 0.00
+Episode 1300     Avg length: 115         Avg reward: -297.52     Solved: 0.00
+Episode 1400     Avg length: 127         Avg reward: -272.95     Solved: 0.00
+Episode 1500     Avg length: 129         Avg reward: -304.03     Solved: 0.00
+Episode 1600     Avg length: 154         Avg reward: -305.10     Solved: 0.00
+Episode 1700     Avg length: 207         Avg reward: -343.86     Solved: 0.00
+Episode 1800     Avg length: 285         Avg reward: -315.76     Solved: 0.00
+Episode 1900     Avg length: 479         Avg reward: -296.06     Solved: 0.00
+Episode 2000     Avg length: 727         Avg reward: -107.73     Solved: 0.00
+Episode 2100     Avg length: 835         Avg reward: 51.33       Solved: 0.00
+Episode 2200     Avg length: 900         Avg reward: -23.00      Solved: 0.00
+Episode 2300     Avg length: 924         Avg reward: 83.68       Solved: 0.00
+Episode 2400     Avg length: 955         Avg reward: 627.49      Solved: 1.00
+Episode 2500     Avg length: 834         Avg reward: 457.24      Solved: 0.80
+Episode 2600     Avg length: 778         Avg reward: 450.74      Solved: 0.80
+Episode 2700     Avg length: 900         Avg reward: 280.45      Solved: 0.60
+Episode 2800     Avg length: 915         Avg reward: 627.15      Solved: 1.00
+########## Solved! ##########
