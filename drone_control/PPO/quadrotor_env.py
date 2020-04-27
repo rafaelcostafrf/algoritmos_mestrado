@@ -1,6 +1,6 @@
 from scipy import integrate
 import numpy as np
-from QUATERNION_EULER import Euler2Q, Q2Euler, dQ, Qrot
+from quaternion_euler_utility import euler_quat, quat_euler, deriv_quat, quat_rot_mat
 from collections import deque
 from numpy.linalg import norm
 from mpl_toolkits.mplot3d import Axes3D
@@ -212,7 +212,7 @@ class quad():
         
         # DRAG FORCES ESTIMATION (BASED ON BODY VELOCITIES)
         v_inertial = np.array([[vel_x, vel_y, vel_z]]).T
-        v_body = np.dot(Qrot(q).T, v_inertial)
+        v_body = np.dot(quat_rot_mat(q).T, v_inertial)
         f_drag = -0.5*RHO*C_D*np.multiply(A,np.multiply(abs(v_body),v_body))
         
         # DRAG MOMENTS ESTIMATION (BASED ON BODY ANGULAR VELOCITIES)
@@ -245,7 +245,7 @@ class quad():
         f_body = np.array([[0, 0, f_in]]).T+f_drag
         
         #BODY FORCES ROTATION TO INERTIAL
-        self.f_inertial = np.dot(Qrot(q), f_body)
+        self.f_inertial = np.dot(quat_rot_mat(q), f_body)
         
         #INERTIAL ACCELERATIONS        
         accel_x = self.f_inertial[0]/M        
@@ -265,7 +265,7 @@ class quad():
         W = np.array([[w_xx],
                       [w_yy],
                       [w_zz]])
-        self.V_q = dQ(W, q).flatten()
+        self.V_q = deriv_quat(W, q).flatten()
         dq0=self.V_q[0]
         dq1=self.V_q[1]
         dq2=self.V_q[2]
@@ -316,7 +316,7 @@ class quad():
                 self.previous_state = det_state
         else:
             self.ang = np.random.rand(3)-0.5
-            Q_in = Euler2Q(self.ang)
+            Q_in = euler_quat(self.ang)
             self.previous_state[0:6] = (np.random.rand(6)-0.5)*BB_POS
             self.previous_state[6:10] = Q_in.T
             self.previous_state[10:13] = (np.random.rand(3)-0.5)*1
@@ -378,7 +378,7 @@ class quad():
         
         q = np.array([self.state[6:10]]).T
         q = q/np.linalg.norm(q)
-        self.ang = Q2Euler(q)
+        self.ang = quat_euler(q)
         
         
         self.deep_learning_input = np.roll(self.deep_learning_input, -self.hist_size)
