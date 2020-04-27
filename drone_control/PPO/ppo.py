@@ -2,8 +2,10 @@ import torch
 import torch.nn as nn
 from torch.distributions import MultivariateNormal
 import numpy as np
-from DRONE_MODELO import DinamicaDrone
-from RENDER import Render
+from quadrotor_env import quad, render, animation
+from model import ActorCritic
+## ALGORITMO DE TREINAMENTO PPO BASEADO EM 
+## 
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -22,61 +24,6 @@ class Memory:
         del self.rewards[:]
         del self.is_terminals[:]
 
-class ActorCritic(nn.Module):
-    def __init__(self, state_dim, action_dim, action_std):
-        h1=64
-        h2=64
-        super(ActorCritic, self).__init__()
-        # action mean range -1 to 1
-        self.actor =  nn.Sequential(
-                nn.Linear(state_dim, h1),
-                nn.Tanh(),
-                nn.Linear(h1, h2),
-                nn.Tanh(),
-                nn.Linear(h2, action_dim),
-                nn.Tanh()
-                )
-        # critic
-        self.critic = nn.Sequential(
-                nn.Linear(state_dim, h1),
-                nn.Tanh(),
-                nn.Linear(h1, h2),
-                nn.Tanh(),
-                nn.Linear(h2, 1)
-                )
-        self.action_var = torch.full((action_dim,), action_std*action_std).to(device)
-        
-    def forward(self):
-        raise NotImplementedError
-    
-    def act(self, state, memory):
-        action_mean = self.actor(state)
-        cov_mat = torch.diag(self.action_var).to(device)
-        
-        dist = MultivariateNormal(action_mean, cov_mat)
-        action = dist.sample()
-        action_logprob = dist.log_prob(action)
-        
-        memory.states.append(state)
-        memory.actions.append(action)
-        memory.logprobs.append(action_logprob)
-        
-        return action.detach()
-    
-    def evaluate(self, state, action):   
-        action_mean = self.actor(state)
-        
-        action_var = self.action_var.expand_as(action_mean)
-        cov_mat = torch.diag_embed(action_var).to(device)
-        
-        dist = MultivariateNormal(action_mean, cov_mat)
-        
-        action_logprobs = dist.log_prob(action)
-        dist_entropy = dist.entropy()
-        state_value = self.critic(state)
-        
-        return action_logprobs, torch.squeeze(state_value), dist_entropy
-
 class PPO:
     def __init__(self, state_dim, action_dim, action_std, lr, betas, gamma, K_epochs, eps_clip):
         self.lr = lr
@@ -90,6 +37,14 @@ class PPO:
         
         self.policy_old = ActorCritic(state_dim, action_dim, action_std).to(device)
         self.policy_old.load_state_dict(self.policy.state_dict())
+        
+        try:
+            self.policy.load_state_dict(torch.load('./PPO_continuous_drone.pth',map_location=device))
+            self.policy_old.load_state_dict(torch.load('./PPO_continuous_old_drone.pth',map_location=device))
+            print('Saved models loaded')
+        except:
+            print('New models generated')
+            pass
         
         self.MseLoss = nn.MSELoss()
     
@@ -143,82 +98,57 @@ class PPO:
 def evaluate(env,agent,plotter,eval_steps=10):
     n_solved = 0
     rewards = 0
+    time_steps = 0
     for i in range(eval_steps):
-        state = env.inicial()
+        state = env.reset()
         plotter.clear()
         done = False
         while True:
+            time_steps += 1
             action = agent.policy.actor(torch.FloatTensor(state).to(device)).cpu().detach().numpy()
-            state, reward, done = env.passo(action)
+            state, reward, done = env.step(action)
             rewards += reward
             if i == eval_steps-1:
-                plot_state = np.concatenate((env.y[0:5:2],env.ang,action))
+                plot_state = np.concatenate((env.state[0:5:2],env.ang,action))
                 plotter.add(env.i*0.01,plot_state)
             if done:
-                n_solved += env.resolvido
+                n_solved += env.solved
                 break
+    time_mean = time_steps/eval_steps
     solved_mean = n_solved/eval_steps        
     reward_mean = rewards/eval_steps
     plotter.plot()
-    return reward_mean, solved_mean
-
-
-def evaluate_step(env,agent,plotter,eval_steps=1):
-    n_solved = 0
-    rewards = 0
-    for i in range(eval_steps):
-        state = env.inicial(step=1)
-        plotter.clear()
-        done = False
-        while True:
-            action = agent.policy.actor(torch.FloatTensor(state).to(device)).cpu().detach().numpy()
-            state, reward, done = env.passo(action)
-            rewards += reward
-            if i == eval_steps-1:
-                plot_state = np.concatenate((env.y[0:5:2],env.ang,action))
-                plotter.add(env.i*0.01,plot_state)
-            if done:
-                n_solved += env.resolvido
-                break
-    solved_mean = n_solved/eval_steps        
-    reward_mean = rewards/eval_steps
-    plotter.plot()
-    return reward_mean, solved_mean
+    return reward_mean, time_mean, solved_mean
     
-
-
-t_since_last_plot = 0
+## HYPERPARAMETERS - CHANGE IF NECESSARY ##
+lr = 0.0001
+max_timesteps = 1000
+action_std = 0.3
+update_timestep = 4000
+K_epochs = 80
 T = 5
-# creating environment
-
-DEBUG = 0
 
 
+## HYPERPAREMETERS - PROBABLY NOT NECESSARY TO CHANGE ##
 action_dim = 4
 random_seed = 0
-lr = 0.0001
 log_interval = 100
 max_episodes = 100000
-max_timesteps = 1000
 time_int_step = 0.01
-update_timestep = 4000
 solved_reward = 700
-action_std = 0.3
-K_epochs = 80
 eps_clip = 0.2
 gamma = 0.99
 betas = (0.9, 0.999)
+DEBUG = 0
 
-
-
-
-env = DinamicaDrone(time_int_step, max_timesteps, T, DEBUG)
-state_dim = (env.estados+action_dim)*T
+# creating environment
+env = quad(time_int_step, max_timesteps, euler=0, direct_control=1, deep_learning=1, T=T, debug=0)
+state_dim = env.deep_learning_in_size
 print_states = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-plot_labels = ['x', 'y', 'z', 'phi', 'theta', 'psi', 'F_u', 'M_x', 'M_theta', 'M_psi']
+plot_labels = ['x', 'y', 'z', 'phi', 'theta', 'psi', 'f1', 'f2', 'f3', 'f4']
 line_styles = ['-', '-', '-', '--', '--', '--', ':', ':', ':', ':',]
-plotter = Render(print_states, plot_labels, line_styles)
-plot_frequency = 5000
+plotter = render(print_states, plot_labels, line_styles, depth_plot_list=0, animate=0)
+
 if random_seed:
     print("Random Seed: {}".format(random_seed))
     torch.manual_seed(random_seed)
@@ -230,22 +160,23 @@ ppo = PPO(state_dim, action_dim, action_std, lr, betas, gamma, K_epochs, eps_cli
 print(lr,betas)
 
 # logging variables
+t_since_last_plot = 0
 running_reward = 0
 avg_length = 0
 time_step = 0
 solved_avg = 0
-
+eval_on_mean = True
 
 
 # training loop
 for i_episode in range(1, max_episodes+1):
-    state = env.inicial()
+    state = env.reset()
     for t in range(max_timesteps):
         t_since_last_plot += 1
         time_step +=1
         # Running policy_old:
         action = ppo.select_action(state, memory)
-        state, reward, done = env.passo(action)
+        state, reward, done = env.step(action)
     
         # Saving reward and is_terminals:
         memory.rewards.append(reward)
@@ -257,28 +188,30 @@ for i_episode in range(1, max_episodes+1):
             memory.clear_memory()
             time_step = 0
         running_reward += reward
-        if done:             
+        if done:            
             break
     avg_length += t
     
     # save every 500 episodes
     if i_episode % 500 == 0:
         torch.save(ppo.policy.state_dict(), './PPO_continuous_{}.pth'.format('drone'))
+        torch.save(ppo.policy_old.state_dict(), './PPO_continuous_old_{}.pth'.format('drone'))
         
     # logging
     if i_episode % log_interval == 0:
-        reward_avg, solved_avg = evaluate(env,ppo,plotter,20)
+        reward_avg, time_avg, solved_avg = evaluate(env,ppo,plotter,20)
         avg_length = int(avg_length/log_interval)
         running_reward = int((running_reward/log_interval))
-        print('Episode {} \t Avg length: {} \t Avg reward: {:.2f} \t Solved: {:.2f}'.format(i_episode, avg_length, reward_avg, solved_avg))
+        print('Episode {} \t Avg length: {} \t Avg reward: {:.2f} \t Solved: {:.2f}'.format(i_episode, time_avg, reward_avg, solved_avg))
         running_reward = 0
         avg_length = 0
         
     # stop training if avg_reward > solved_reward
     if solved_avg > 0.95:
-        reward_avg, solved_avg = evaluate(env,ppo,plotter,200)
+        reward_avg, time_avg, solved_avg = evaluate(env,ppo,plotter,200)
         if solved_avg > 0.95:
             print("########## Solved! ##########")
             torch.save(ppo.policy.state_dict(), './PPO_continuous_solved_{}.pth'.format('drone'))
+            torch.save(ppo.policy_old.state_dict(), './PPO_continuous_old_solved_{}.pth'.format('drone'))
             break
         
