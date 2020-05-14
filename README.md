@@ -1,3 +1,8 @@
-# Espaço Reservado para a versão 1.0 para apresentação.
-# Favor acompanhar os branches beta.
-## Versão mais Atualizada: 0.0.8
+# Versão 0.0.8
+
+# Simulação 3D
+# Controlador PPO mais refinado
+# Simulação de Sensores
+# Determinação de atitude a partir de imagens (dentro do ambiente 3D)
+
+
